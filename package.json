@@ -1,17 +1,26 @@
 {
-  "name": "physio-clinic",
+  "name": "muni-physio-clinic",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Muni Physio Care - Advanced Physiotherapy & Rehabilitation Center",
+  "main": "muniphysioserver.js",
   "scripts": {
+    "start": "node muniphysioserver.js",
     "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/muni6864/Muni-Physio-Clinic.git"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/muni6864/Muni-Physio-Clinic/issues"
+  },
+  "homepage": "https://github.com/muni6864/Muni-Physio-Clinic#readme",
   "dependencies": {
     "express": "^5.2.1",
-    "sqlite3": "^5.1.7"
+    "pg": "^8.16.3"
   }
 }
