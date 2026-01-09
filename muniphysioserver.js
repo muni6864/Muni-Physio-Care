@@ -1009,7 +1009,7 @@ function renderHTML(doctor, feedbacks, stats) {
 
     const docName = doctor ? doctor.name : "Dr. Munikrishna SN PT";
 
-    const docQual = doctor ? doctor.qualification : "Specialist";
+    const docQual = doctor ? doctor.qualification : "Physiotherapist";
 
     const docImg = (doctor && doctor.image_url) ? doctor.image_url : "/doctor.jpg";
 
@@ -1203,36 +1203,12 @@ function renderHTML(doctor, feedbacks, stats) {
     display: inline-block;
 }
 
-
-/* Ensure the title and subtitle scale down for small phones */
-.header-banner h1 {
-    color: #ffffff;
-    font-size: 24px; /* Scaled for mobile */
-    margin-bottom: 8px;
-    width: 100%;
-}
-
-.header-banner p {
-    color: #cbd5e1;
-    font-size: 14px;
-    margin: 0 auto;
-    max-width: 250px; /* Keeps text from stretching too wide */
-}
-
-/* Fix for the doctor profile image positioning */
-.doctor-profile-wrapper {
-    margin-top: -50px; /* Pulls the image up into the banner area */
-    display: flex;
-    justify-content: center;
-    width: 100%;
-}
-
-
 .profile-img:hover {
     transform: translateY(-55px) scale(1.05) !important; /* Slight zoom on hover */
     box-shadow: 0 15px 30px rgba(0,0,0,0.2);
     cursor: pointer;
 }
+
             /* CARDS */
 
             .card { 
@@ -1786,5 +1762,3 @@ app.listen(PORT, () => {
 });
 
  
-
-
