@@ -16,7 +16,7 @@ app.use(express.static('public'));
 // 2. DATABASE SETUP (PostgreSQL)
 const pool = new Pool({
     // Use environment variable 'DATABASE_URL' which you will set in Render
-    connectionString: process.env.DATABASE_URL || "postgresql://muni_physio_care_db_user:DWhmgRBdpeTYDnUarwfKlhyKUa8SBgyg@dpg-d5gak2ffte5s73fgn5fg-a.singapore-postgres.render.com/muni_physio_care_db",
+    connectionString: process.env.DATABASE_URL || "postgresql://muni_physio_care_db_rm0l_user:cItWlCZIEeN5HPzZZpoUQEC7DU4EN5m0@dpg-d5gb6qnfte5s73fh3l90-a/muni_physio_care_db_rm0l",
     ssl: {
         rejectUnauthorized: false 
     }
@@ -1786,4 +1786,5 @@ app.listen(PORT, () => {
 });
 
  
+
 
