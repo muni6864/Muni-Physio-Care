@@ -1,7 +1,13 @@
 const express = require('express');
 const { Pool } = require('pg'); 
 const app = express();
+app.use(express.json()); 
+app.use(express.urlencoded({ extended: true }))
+
+const registrationRoutes = require('./patient_registration');
+const adminRoutes = require('./Adminhomepage');
 const PORT = process.env.PORT || 3001;
+
 
 // 1. MIDDLEWARE SETUP
 app.use(express.urlencoded({ extended: true })); 
@@ -10,7 +16,7 @@ app.use(express.static('public'));
 // 2. DATABASE SETUP (PostgreSQL)
 const pool = new Pool({
     // Use environment variable 'DATABASE_URL' which you will set in Render
-    connectionString: process.env.DATABASE_URL || "postgresql://physio_care_user:ZncwJKq0nAQQYAdLAm0cnUP0wWTb7bmR@dpg-d54g4gbuibrs738fjn90-a.singapore-postgres.render.com/physio_care",
+    connectionString: process.env.DATABASE_URL || "postgresql://muni_physio_care_db_user:DWhmgRBdpeTYDnUarwfKlhyKUa8SBgyg@dpg-d5gak2ffte5s73fgn5fg-a.singapore-postgres.render.com/muni_physio_care_db",
     ssl: {
         rejectUnauthorized: false 
     }
@@ -34,11 +40,61 @@ async function initDB() {
             rating INTEGER
         )`);
 
-        const res = await pool.query("SELECT * FROM doctor WHERE name = $1", ['Dr. Muniraju SN PT']);
+    
+
+await pool.query(`
+    CREATE TABLE IF NOT EXISTS patients (
+        id SERIAL PRIMARY KEY,
+        patient_id VARCHAR(8) NOT NULL,
+        name TEXT NOT NULL,
+        mobile VARCHAR(10) NOT NULL,
+        age TEXT NOT NULL,
+        address TEXT NOT NULL,
+        dob DATE NOT NULL,
+        issue TEXT NOT NULL,
+        details TEXT,
+        status TEXT DEFAULT 'New Register',
+        treatment_start DATE,
+        treatment_end DATE,
+        treatment_details TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+`);
+
+
+// --- Session Details ----
+
+await pool.query(`
+CREATE TABLE IF NOT EXISTS sessions (
+    id SERIAL PRIMARY KEY,
+    patient_id VARCHAR(20) NOT NULL,
+    session_number INT NOT NULL,
+    session_date DATE DEFAULT CURRENT_DATE,
+    session_details TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+`);
+
+// --- ADMINS TABLE ---
+        await pool.query(`CREATE TABLE IF NOT EXISTS admins (
+            id SERIAL PRIMARY KEY,
+            username TEXT UNIQUE NOT NULL,
+            password TEXT NOT NULL
+        )`);
+
+ // Insert default admin
+        await pool.query(`
+            INSERT INTO admins (username, password)
+            VALUES ('munikrish6468@gmail.com', 'Muni@6468')
+            ON CONFLICT (username) DO NOTHING
+        `);
+    
+
+        const res = await pool.query("SELECT * FROM doctor WHERE name = $1", ['Dr.Munikrishna SN PT']);
         if (res.rows.length === 0) {
             await pool.query(
                 "INSERT INTO doctor (name, qualification, image_url, phone) VALUES ($1, $2, $3, $4)",
-                ['Dr. Muniraju SN PT', 'Bachelor of Physiotherapy', '/doctor.jpg', '9113602399']
+                ['Dr. Munikrishna SN PT', 'Bachelor of Physiotherapy', '/doctor.jpg', '9148171372']
             );
         }
         console.log('Connected to Render PostgreSQL and initialized tables.');
@@ -50,70 +106,252 @@ initDB();
 
 
 
-// 3. ROUTES
 
-app.get('/', (req, res) => {
 
-    db.get("SELECT * FROM doctor LIMIT 1", (err, doctor) => {
+// 3. ROUTES for fech reviews
+app.get('/', async (req, res) => {
+    try {
+        const doctorRes = await pool.query("SELECT * FROM doctor LIMIT 1");
+        
+        // UPDATE THIS LINE: Added LIMIT 5 to ensure only the latest 5 show
+        const feedbacksRes = await pool.query("SELECT * from feedbacks ORDER BY id DESC LIMIT 5");
+        
+        const statsRes = await pool.query("SELECT AVG(rating) as avg_rating, COUNT(id) as count FROM feedbacks");
 
-        if (err) return res.send("Database error");
+        const doctor = doctorRes.rows[0];
+        const feedbacks = feedbacksRes.rows;
+        const stats = statsRes.rows[0];
 
-        db.all("SELECT * FROM feedbacks ORDER BY id DESC", (err, feedbacks) => {
+        stats.avg_rating = parseFloat(stats.avg_rating) || 0;
+        stats.count = parseInt(stats.count) || 0;
 
-            if (err) return res.send("Database error");
-
-            db.get("SELECT AVG(rating) as avg_rating, COUNT(id) as count FROM feedbacks", (err, stats) => {
-
-                if (err) return res.send("Database error");
-
-                res.send(renderHTML(doctor, feedbacks, stats));
-
-            });
-
-        });
-
-    });
-
+        res.send(renderHTML(doctor, feedbacks, stats));
+    } catch (err) {
+        console.error(err);
+        res.status(500).send("Database error occurred.");
+    }
 });
 
-// --- ADD THIS ROUTE FOR THE DOCTOR'S PROFILE PAGE ---
-app.get('/about-doctor', (req, res) => {
+
+
+// Admin Login Page Route
+app.get('/admin-login', (req, res) => {
+    res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Admin Login</title>
+        <style>
+            body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background: #f1f5f9; margin:0; }
+            .login-card { background: white; padding: 40px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 320px; }
+            input { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; }
+            .btn { width: 100%; padding: 12px; background: #334155; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
+            .back-link { display: block; text-align: center; margin-top: 15px; color: #64748b; text-decoration: none; font-size: 0.9rem; }
+            .forgot { display: block; text-align: right; font-size: 0.8rem; color: #ef4444; text-decoration: none; margin-bottom: 15px; }
+        </style>
+    </head>
+    <body>
+        <div class="login-card">
+            <h2 style="text-align:center">Admin Login</h2>
+            <form action="/api/admin-auth" method="POST">
+                <label>User name:</label>
+                <input type="email" name="username" required placeholder="username">
+                <label>Password:</label>
+                <input type="password" name="password" required placeholder="Password">
+                <a href="/forgot-password" class="forgot">Forgot user or password</a>
+                <button type="submit" class="btn">LOGIN</button>
+            </form>
+            <a href="/" class="back-link">Go Back To Home Page</a>
+        </div>
+    </body>
+    </html>`);
+});
+
+//Admin home page
+
+app.post('/api/admin-auth', async (req, res) => {
+    const { username, password } = req.body;
+    try {
+        // Query the database to check if the admin exists
+        const result = await pool.query(
+            "SELECT * FROM admins WHERE username = $1 AND password = $2", 
+            [username, password]
+        );
+
+        if (result.rows.length > 0) {
+            // SUCCESS: This line sends the user to the new Dashboard page
+            res.redirect('/admin/dashboard'); 
+        } else {
+            // FAILURE: Show an alert and go back to login
+            res.send("<script>alert('Invalid Credentials'); window.history.back();</script>");
+        }
+    } catch (err) {
+        console.error(err);
+        res.status(500).send("Authentication Error");
+    }
+});
+// --- Forgot Password Logic ----
+
+const nodemailer = require('nodemailer');
+
+app.get('/forgot-password', (req, res) => {
+    res.send(`
+        <div style="font-family: sans-serif; max-width: 400px; margin: 100px auto; padding: 25px; border: 1px solid #ddd; border-radius: 10px; text-align: center;">
+            <h3>Reset Admin Credentials</h3>
+            <p>A reset link will be sent to munigowda6864@gmail.com</p>
+            <form action="/api/send-reset" method="POST">
+                <button type="submit" style="padding: 10px 20px; background: #ef4444; color: white; border: none; border-radius: 5px; cursor: pointer;">Send Link to My Email</button>
+            </form>
+            <br><a href="/admin-login">Back to Login</a>
+        </div>
+    `);
+});
+
+app.post('/api/send-reset', async (req, res) => {
+    // You will need a 'nodemailer' transporter set up here to send the actual email
+    // For now, let's simulate it:
+    res.send("<script>alert('A reset link has been sent to your registered email!'); window.location.href='/admin-login';</script>");
+});
+
+
+
+ app.get('/about-doctor', (req, res) => {
     res.send(`
     <!DOCTYPE html>
     <html lang="en">
     <head>
         <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Dr. Munikrishna SN - Profile</title>
         <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
         <style>
-            body { font-family: 'Poppins', sans-serif; line-height: 1.6; color: #1f2937; max-width: 800px; margin: 40px auto; padding: 20px; background: #f3f6f9; }
-            .info-card { background: white; padding: 40px; border-radius: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.05); text-align: center; }
-            .profile-large { width: 200px; height: 200px; border-radius: 50%; object-fit: cover; border: 5px solid #0066cc; margin-bottom: 20px; }
-            h1 { color: #0066cc; margin-bottom: 10px; }
-            .details-align { text-align: left; background: #f8fafc; padding: 25px; border-radius: 16px; margin-top: 20px; }
-            h2 { font-size: 1.2rem; color: #111827; margin-top: 20px; border-left: 4px solid #10b981; padding-left: 15px; }
-            p { margin: 10px 0; }
-            .home-btn { display: inline-block; margin-top: 30px; padding: 15px 30px; background: #0066cc; color: white; text-decoration: none; border-radius: 50px; font-weight: 700; transition: 0.3s; }
-            .home-btn:hover { background: #004c99; transform: translateY(-2px); }
+            body { font-family: 'Poppins', sans-serif; line-height: 1.6; color: #1f2937; max-width: 900px; margin: 40px auto; padding: 20px; background: #f3f6f9; }
+            .info-card { background: white; padding: 50px; border-radius: 30px; box-shadow: 0 15px 35px rgba(0,0,0,0.07); text-align: center; }
+            
+            .profile-large { width: 180px; height: 180px; border-radius: 50%; object-fit: cover; border: 5px solid #0066cc; margin-bottom: 20px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
+            
+            h1 { color: #111827; margin: 10px 0 5px 0; font-size: 2.2rem; }
+            .credential { color: #0066cc; font-weight: 600; font-size: 1.1rem; margin-bottom: 30px; }
+            
+            .details-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 25px; text-align: left; margin-top: 30px; }
+            
+            .detail-item { background: #f8fafc; padding: 20px; border-radius: 15px; border-top: 4px solid #0066cc; }
+            .detail-item h2 { font-size: 1rem; color: #64748b; margin-top: 0; text-transform: uppercase; letter-spacing: 1px; }
+            .detail-item p { margin: 5px 0 0 0; color: #1e293b; font-weight: 500; }
+
+            .full-width { grid-column: 1 / -1; }
+            
+            .languages-tag { display: inline-block; background: #e0f2fe; color: #0369a1; padding: 5px 15px; border-radius: 20px; margin-right: 8px; font-size: 0.9rem; font-weight: 600; }
+            
+            .btn-container { margin-top: 40px; display: flex; justify-content: center; gap: 15px; }
+            .home-btn { padding: 12px 30px; background: #64748b; color: white; text-decoration: none; border-radius: 50px; font-weight: 600; transition: 0.3s; }
+            .book-btn { padding: 12px 30px; background: #25D366; color: white; text-decoration: none; border-radius: 50px; font-weight: 600; transition: 0.3s; display: flex; align-items: center; gap: 8px; }
+            
+            @media (max-width: 600px) { .details-grid { grid-template-columns: 1fr; } }
         </style>
     </head>
     <body>
         <div class="info-card">
-            <img src="/doctor.jpg" alt="Dr. Munikrishna SN" class="profile-large">
-            <h1>Dr. Munikrishna</h1>
-            <p><strong>Bachelor of Physiotherapy</strong></p>
+            <img src="/doctor.jpg" alt="Dr. Munikrishna SN PT" class="profile-large">
+            <h1>Dr. Munikrishna SN</h1>
+            <p class="credential">B.P.T (Bachelor of Physiotherapy)</p>
             
-            <div class="details-align">
-                 
-                <h2>Experience</h2>
-                <p>Worked as a full time physio at <strong>Baptist Hospital</strong></p>
+            <div class="details-grid">
+                <div class="detail-item">
+                    <h2>Experience</h2>
+                    <p>Physiotherapist at <strong>Baptist Hospital </strong> since 2024</p>
+                </div>
 
-                <h2>Specialisation</h2>
-                <p>Restoring basic mobility, managing chronic pain (like back or neck pain), and rehabilitating patients after surgery or illness.</p>
-               
+                <div class="detail-item">
+                    <h2>Clinical Focus</h2>
+                    <p>Post-Op Rehab, Geriatric Care, Pain Management & Chronic Pain </p>
+                </div>
 
-                <h2>Languages</h2>
-                <p>English, Kannada, Telugu, Hindi</p>
+                <div class="detail-item full-width">
+                    <h2>Specialisation</h2>
+                    <p>Restoring basic mobility, managing chronic pain (back/neck), and complex rehabilitation after surgery or illness.</p>
+                </div>
+
+                <div class="detail-item full-width">
+                    <h2>Languages Spoken</h2>
+                    <div style="margin-top:10px;">
+                        <span class="languages-tag">English</span>
+                        <span class="languages-tag">Kannada</span>
+                        <span class="languages-tag">Telugu</span>
+                        <span class="languages-tag">Hindi</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="btn-container">
+                <a href="/" class="home-btn">Back to Home</a>
+                <a href="https://wa.me/9148171372" class="book-btn">Book Consultation</a>
+            </div>
+        </div>
+    </body>
+    </html>
+    `);
+});
+
+app.get('/electro', (req, res) => {
+    res.send(`
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <title>Electrotherapy - Muni Physio Care</title>
+        <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+        <style>
+            body { font-family: 'Poppins', sans-serif; line-height: 1.6; color: #1f2937; max-width: 800px; margin: 40px auto; padding: 20px; background: #f3f6f9; }
+            .info-card { background: white; padding: 40px; border-radius: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.05); }
+            h1 { color: #1e40af; margin-top: 0; font-size: 2.5rem; border-bottom: 3px solid #1e40af; display: inline-block; margin-bottom: 20px; }
+            h2 { color: #111827; margin-top: 30px; font-size: 1.4rem; border-left: 4px solid #3b82f6; padding-left: 15px; }
+            ul { padding-left: 20px; }
+            li { margin-bottom: 12px; }
+            .home-btn { display: inline-block; margin-top: 30px; padding: 15px 30px; background: #1e40af; color: white; text-decoration: none; border-radius: 50px; font-weight: 700; transition: 0.3s; }
+            .home-btn:hover { background: #1e3a8a; transform: translateY(-2px); }
+            strong { color: #1e40af; }
+            .tech-box { background: #f8fafc; border-radius: 15px; padding: 25px; margin-top: 25px; border: 1px solid #e2e8f0; }
+            .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 10px; }
+            @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } }
+        </style>
+    </head>
+    <body>
+        <div class="info-card">
+            <h1>Electrotherapy</h1>
+            <p>Electrotherapy is a key pillar of modern physiotherapy, using controlled electrical energy to stimulate nerves and muscles. It is highly effective for <strong>pain management</strong>, reducing inflammation, and accelerating the body's natural healing response.</p>
+
+
+
+            <h2>1. Primary Modalities</h2>
+            <div class="grid">
+                <div class="tech-box">
+                    <strong>TENS:</strong> Transcutaneous Electrical Nerve Stimulation. Focuses on blocking pain signals to the brain (Gate Control).
+                </div>
+                <div class="tech-box">
+                    <strong>IFT:</strong> Interferential Therapy. Uses medium-frequency currents to reach deep-seated pain and swelling.
+                </div>
+                <div class="tech-box">
+                    <strong>EMS:</strong> Electrical Muscle Stimulation. Used to prevent muscle atrophy and re-educate weak muscles.
+                </div>
+                <div class="tech-box">
+                    <strong>Ultrasound:</strong> Physiotherapy ultrasound uses high-frequency sound waves to create deep heat or vibrations in tissues, promoting healing by increasing blood flow, reducing inflammation, easing stiffness, and speeding up repair for injuries like sprains, strains, tendinitis, and osteoarthritis, working as either a thermal (continuous) or non-thermal (pulsed) treatment for pain and swelling.
+                </div>
+            </div>
+
+            
+
+            <h2>2. Clinical Benefits</h2>
+            <ul>
+                <li><strong>Pain Modulation:</strong> Immediate relief for acute and chronic conditions like sciatica, spondylosis, and arthritis.</li>
+                <li><strong>Edema Reduction:</strong> Enhances local blood flow and lymphatic drainage to clear swelling from injuries.</li>
+                <li><strong>Tissue Repair:</strong> Stimulates ATP production at the cellular level to speed up the healing of ligaments and tendons.</li>
+                <li><strong>Muscle Re-education:</strong> Restores the neural connection between the brain and muscles after surgery or stroke.</li>
+            </ul>
+
+            <div class="tech-box" style="background: #eff6ff; border-color: #bfdbfe;">
+                <h3>Why it works</h3>
+                <p>By mimicking the body's natural electrical impulses, electrotherapy can "reset" the nervous system, lower the sensitivity of pain receptors, and stimulate the release of <strong>endorphins</strong>—your body's natural painkillers.</p>
             </div>
 
             <a href="/" class="home-btn">Back to Home Page</a>
@@ -124,93 +362,52 @@ app.get('/about-doctor', (req, res) => {
 });
 
 
-// --- ADD THIS NEW ROUTE FOR ULTRASOUND THERAPY ---
-app.get('/ultrasound', (req, res) => {
+
+
+
+
+
+app.get('/exercise-therapy', (req, res) => {
     res.send(`
     <!DOCTYPE html>
     <html lang="en">
     <head>
         <meta charset="UTF-8">
-        <title>Ultrasound Therapy - Treatment Goals</title>
+        <title>Exercise Therapy</title>
         <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
         <style>
             body { font-family: 'Poppins', sans-serif; line-height: 1.6; color: #1f2937; max-width: 800px; margin: 40px auto; padding: 20px; background: #f3f6f9; }
             .info-card { background: white; padding: 40px; border-radius: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.05); }
-            h1 { color: #0066cc; margin-top: 0; font-size: 2.5rem; border-bottom: 3px solid #0066cc; display: inline-block; margin-bottom: 20px; }
-            h2 { color: #111827; margin-top: 30px; font-size: 1.4rem; border-left: 4px solid #10b981; padding-left: 15px; }
+            h1 { color: #10b981; margin-top: 0; font-size: 2.5rem; border-bottom: 3px solid #10b981; display: inline-block; margin-bottom: 20px; }
+            h2 { color: #111827; margin-top: 30px; font-size: 1.4rem; border-left: 4px solid #0066cc; padding-left: 15px; }
             ul { padding-left: 20px; }
             li { margin-bottom: 12px; }
-            .home-btn { display: inline-block; margin-top: 30px; padding: 15px 30px; background: #0066cc; color: white; text-decoration: none; border-radius: 50px; font-weight: 700; transition: 0.3s; }
-            .home-btn:hover { background: #004c99; transform: translateY(-2px); }
+            .home-btn { display: inline-block; margin-top: 30px; padding: 15px 30px; background: #10b981; color: white; text-decoration: none; border-radius: 50px; font-weight: 700; transition: 0.3s; }
+            .home-btn:hover { background: #059669; transform: translateY(-2px); }
+            strong { color: #0066cc; }
         </style>
     </head>
     <body>
         <div class="info-card">
-            <h1>Ultrasound Therapy</h1>
-            <p>The goals of this treatment shift as a patient moves from the initial injury toward full recovery.</p>
+            <h1>Exercise Therapy</h1>
+            <p>Exercise therapy involves a plan of physical activities designed and prescribed to facilitate the recovery from specific injuries or to improve general physical health.</p>
             
-            <h2>1. Short-Term Goals (Immediate Response)</h2>
-            <ul>
-                <li><strong>Pain Modulation:</strong> Increasing pain threshold by stimulating the "gate control" mechanism.</li>
-                <li><strong>Inflammation Control:</strong> Using pulsed ultrasound to increase cell permeability and reduce swelling.</li>
-                <li><strong>Muscle Spasm Reduction:</strong> Gentle heating helps "reset" muscle spindles for immediate relaxation.</li>
-                <li><strong>Improved Local Circulation:</strong> Thermal effects widen blood vessels to bring oxygen and nutrients to the site.</li>
-            </ul>
-
-            <h2>2. Long-Term Goals (Tissue Repair)</h2>
-            <ul>
-                <li><strong>Tissue Regeneration:</strong> Stimulating fibroblasts to produce collagen for tendon and ligament repair.</li>
-                <li><strong>Scar Tissue Realignment:</strong> Making collagen fibers more "pliable" to massage them into functional alignment.</li>
-                <li><strong>Accelerated Bone Healing:</strong> Stimulating osteoblasts to speed up the union of fractures.</li>
-                <li><strong>Improved Extensibility:</strong> Increasing the "stretchiness" of joint capsules and tendons in chronic cases.</li>
-            </ul>
-
-            <a href="/" class="home-btn">Back to Home Page</a>
-        </div>
-    </body>
-    </html>
-    `);
-});
-
-// --- ADD THIS NEW ROUTE FOR TENS THERAPY ---
-app.get('/tens', (req, res) => {
-    res.send(`
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <title>TENS Therapy - Treatment Goals</title>
-        <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
-        <style>
-            body { font-family: 'Poppins', sans-serif; line-height: 1.6; color: #1f2937; max-width: 800px; margin: 40px auto; padding: 20px; background: #f3f6f9; }
-            .info-card { background: white; padding: 40px; border-radius: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.05); }
-            h1 { color: #0066cc; margin-top: 0; font-size: 2.5rem; border-bottom: 3px solid #0066cc; display: inline-block; margin-bottom: 20px; }
-            h2 { color: #111827; margin-top: 30px; font-size: 1.4rem; border-left: 4px solid #10b981; padding-left: 15px; }
-            ul { padding-left: 20px; }
-            li { margin-bottom: 12px; }
-            .home-btn { display: inline-block; margin-top: 30px; padding: 15px 30px; background: #0066cc; color: white; text-decoration: none; border-radius: 50px; font-weight: 700; transition: 0.3s; }
-            .home-btn:hover { background: #004c99; transform: translateY(-2px); }
-        </style>
-    </head>
-    <body>
-        <div class="info-card">
-            <h1>TENS Therapy</h1>
-            <p>TENS goals focus on neurological "distraction" in the short term and biochemical regulation in the long term.</p>
             
-            <h2>1. Short-Term Goals (Immediate Management)</h2>
+
+            <h2>1. Short-Term Goals</h2>
             <ul>
-                <li><strong>Pain Signal Interruption:</strong> Stimulating large sensory nerve fibers to "close the gate" in the spinal cord, blocking pain signals to the brain.</li>
-                <li><strong>Acute Muscle Relaxation:</strong> Interrupting the "pain-spasm-pain" cycle through gentle tingling sensations.</li>
-                <li><strong>Functional Improvement:</strong> Lowering movement-evoked pain so patients can perform necessary stretches and exercises.</li>
-                <li><strong>Edema Reduction:</strong> Using low-frequency settings to create a "muscle pump" effect that moves fluid out of injured areas.</li>
+                <li><strong>Joint Mobility:</strong> Performing Range of Motion (ROM) exercises to prevent stiffness and maintain joint lubrication after surgery or injury.</li>
+                <li><strong>Neuromuscular Activation:</strong> Re-educating muscles that have "shut down" due to pain or inactivity to start firing correctly again.</li>
+                <li><strong>Pain Management:</strong> Utilizing low-impact rhythmic movements to increase blood flow and release natural pain-relieving endorphins.</li>
+                <li><strong>Correction of Posture:</strong> Implementing immediate stretching of tight muscles to relieve strain on the spine and joints.</li>
             </ul>
 
-            <h2>2. Long-Term Goals (Systemic Changes)</h2>
+            <h2>2. Long-Term Goals</h2>
             <ul>
-                <li><strong>Endogenous Opioid Release:</strong> Stimulating the brain to release natural painkillers like endorphins for long-lasting relief.</li>
-                <li><strong>Reduction of Central Sensitization:</strong> Retraining the nervous system to be less sensitive and dampening nerve hyperactivity.</li>
-                <li><strong>Decreased Drug Dependency:</strong> Providing a non-pharmacological alternative to reduce reliance on opioids or NSAIDs.</li>
-                <li><strong>Improved Micro-circulation:</strong> Influencing the nervous system to improve blood flow for long-term tissue health.</li>
+                <li><strong>Hypertrophy & Strength:</strong> Progressive resistance training to build muscle mass and support weakened skeletal structures.</li>
+                <li><strong>Proprioception & Balance:</strong> Enhancing the body's ability to sense its position in space to prevent future falls and re-injury.</li>
+                <li><strong>Cardiovascular Endurance:</strong> Improving heart and lung capacity to ensure the patient can return to daily activities without fatigue.</li>
+                <li><strong>Functional Independence:</strong> Training specific movement patterns (squatting, lifting, reaching) to restore the patient's ability to live independently.</li>
             </ul>
 
             <a href="/" class="home-btn">Back to Home Page</a>
@@ -221,94 +418,60 @@ app.get('/tens', (req, res) => {
 });
 
 
-// --- ADD THIS ROUTE FOR BACK PAIN HERE ---
-app.get('/back-pain', (req, res) => {
-    res.send(`
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <title>Back Pain Details</title>
-        <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
-        <style>
-            body { font-family: 'Poppins', sans-serif; line-height: 1.6; color: #1f2937; max-width: 800px; margin: 40px auto; padding: 20px; background: #f3f6f9; }
-            .info-card { background: white; padding: 40px; border-radius: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.05); }
-            h1 { color: #0066cc; border-bottom: 3px solid #0066cc; display: inline-block; margin-bottom: 20px; }
-            h2 { color: #111827; margin-top: 30px; font-size: 1.4rem; border-left: 4px solid #10b981; padding-left: 15px; }
-            ul { padding-left: 20px; }
-            li { margin-bottom: 12px; }
-            .home-btn { display: inline-block; margin-top: 30px; padding: 15px 30px; background: #0066cc; color: white; text-decoration: none; border-radius: 50px; font-weight: 700; transition: 0.3s; }
-            .home-btn:hover { background: #004c99; transform: translateY(-2px); }
-        </style>
-    </head>
-    <body>
-        <div class="info-card">
-            <h1>Back Pain</h1>
-            <p>The goals are typically categorized into short-term relief and long-term functional recovery.</p>
-            <h2>Immediate & Short-Term Goals</h2>
-            <ul>
-                <li><strong>Pain Reduction:</strong> Using "passive" therapies (like heat/ice, manual therapy, or TENS) to lower pain levels so you can begin to move.</li>
-                <li><strong>Inflammation Control:</strong> Managing swelling and tissue irritation through guided rest and gentle movement.</li>
-                <li><strong>Restoring Basic Mobility:</strong> Improving the range of motion in the spine and hips so simple tasks become less painful.</li>
-                <li><strong>Nerve Decompression:</strong> Moving pain from the leg back toward the spine to relieve nerve pressure.</li>
-            </ul>
-            <h2>Long-Term & Functional Goals</h2>
-            <ul>
-                <li><strong>Core & Spinal Stabilization:</strong> Strengthening deep "stabilizer" muscles that act as a natural corset for your spine.</li>
-                <li><strong>Postural Re-education:</strong> Correcting habits that put repetitive stress on your back.</li>
-                <li><strong>Functional Independence:</strong> Returning to specific life activities like gardening or sports.</li>
-                <li><strong>Prevention of Recurrence:</strong> Education on home exercise programs (HEP).</li>
-            </ul>
-            <a href="/" class="home-btn">Back to Home Page</a>
-        </div>
-    </body>
-    </html>
-    `);
-});
 
-// --- ADD THIS NEW ROUTE FOR IFT THERAPY ---
-app.get('/ift', (req, res) => {
+
+
+
+
+app.get('/stroke-rehab', (req, res) => {
     res.send(`
     <!DOCTYPE html>
     <html lang="en">
     <head>
         <meta charset="UTF-8">
-        <title>IFT Therapy - Treatment Goals</title>
+        <title>Stroke Rehabilitation</title>
         <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
         <style>
             body { font-family: 'Poppins', sans-serif; line-height: 1.6; color: #1f2937; max-width: 800px; margin: 40px auto; padding: 20px; background: #f3f6f9; }
             .info-card { background: white; padding: 40px; border-radius: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.05); }
-            h1 { color: #0066cc; margin-top: 0; font-size: 2.5rem; border-bottom: 3px solid #0066cc; display: inline-block; margin-bottom: 20px; }
-            h2 { color: #111827; margin-top: 30px; font-size: 1.4rem; border-left: 4px solid #10b981; padding-left: 15px; }
+            h1 { color: #4f46e5; margin-top: 0; font-size: 2.5rem; border-bottom: 3px solid #4f46e5; display: inline-block; margin-bottom: 20px; }
+            h2 { color: #111827; margin-top: 30px; font-size: 1.4rem; border-left: 4px solid #f59e0b; padding-left: 15px; }
             ul { padding-left: 20px; }
             li { margin-bottom: 12px; }
-            .home-btn { display: inline-block; margin-top: 30px; padding: 15px 30px; background: #0066cc; color: white; text-decoration: none; border-radius: 50px; font-weight: 700; transition: 0.3s; }
-            .home-btn:hover { background: #004c99; transform: translateY(-2px); }
+            .home-btn { display: inline-block; margin-top: 30px; padding: 15px 30px; background: #4f46e5; color: white; text-decoration: none; border-radius: 50px; font-weight: 700; transition: 0.3s; }
+            .home-btn:hover { background: #3730a3; transform: translateY(-2px); }
+            strong { color: #4f46e5; }
+            .highlight-box { background: #fdf2f2; border: 1px dashed #f87171; padding: 15px; border-radius: 12px; margin-top: 20px; font-size: 0.9rem; }
         </style>
     </head>
     <body>
         <div class="info-card">
-            <h1>IFT (Interferential Therapy)</h1>
-            <p>The goals of IFT transition from immediate "crisis management" to long-term tissue rehabilitation.</p>
+            <h1>Stroke Rehabilitation</h1>
+            <p>Stroke rehabilitation is a comprehensive program designed to help survivors relearn skills that were lost when part of the brain was damaged. Our focus is on <strong>Neuroplasticity</strong>—the brain's ability to rewire itself through repetitive, purposeful movement.</p>
+
             
-            <h2>1. Short-Term Goals (Acute Phase)</h2>
-            <p>The aim is to manage "angry" tissues and provide immediate comfort.</p>
+
+            <h2>1. Short-Term Goals</h2>
             <ul>
-                <li><strong>Deep-Tissue Pain Relief:</strong> Targets deep-seated pain by blocking pain signals from reaching the brain.</li>
-                <li><strong>Edema (Swelling) Management:</strong> Uses a frequency sweep to create a rhythmic "muscle-pump" that drains excess fluid.</li>
-                <li><strong>Breaking the Muscle Spasm Cycle:</strong> Forces hyper-tense muscles to relax by fatiguing motor nerves and boosting blood flow.</li>
-                <li><strong>Local Vasodilation:</strong> Widens blood vessels to increase oxygen delivery for cellular repair.</li>
+                <li><strong>Spasticity Management:</strong> Reducing abnormal muscle tightness and preventing painful contractures through specialized stretching and positioning.</li>
+                <li><strong>Safe Bed Mobility:</strong> Relearning how to roll, sit up at the edge of the bed, and move safely to a chair (transfers).</li>
+                <li><strong>Sensation Stimulation:</strong> Providing sensory input to the affected side to "wake up" the neural pathways and reduce neglect.</li>
+                <li><strong>Balance & Trunk Stability:</strong> Strengthening the core muscles to ensure the patient can sit or stand without falling.</li>
             </ul>
 
-            <h2>2. Long-Term Goals (Recovery & Repair)</h2>
-            <p>Shifting toward permanent healing and restoring tissue strength.</p>
+            
+
+            <h2>2. Long-Term Goals</h2>
             <ul>
-                <li><strong>Endogenous Opioid Release:</strong> Stimulates the brain to produce natural painkillers like endorphins for long-lasting relief.</li>
-                <li><strong>Accelerated Tissue Healing:</strong> Ensures consistent delivery of repair "building blocks" (like collagen) to damaged areas.</li>
-                <li><strong>Muscle Re-education:</strong> Helps "remind" weak or inhibited muscles how to contract properly.</li>
-                <li><strong>Reduction of Chronic Inflammation:</strong> Flushes out inflammatory by-products in long-term conditions like osteoarthritis.</li>
-                <li><strong>Improved Joint Mobility:</strong> Reducing deep guarding to allow for a full, natural range of motion.</li>
+                <li><strong>Gait Re-education:</strong> Restoring the ability to walk safely, with or without assistive devices, focusing on weight-bearing and foot clearance.</li>
+                <li><strong>Upper Limb Functionality:</strong> Improving fine motor skills in the hands and arms to perform Tasks of Daily Living (ADLs) like eating and dressing.</li>
+                <li><strong>Cognitive & Speech Integration:</strong> Working alongside multidisciplinary teams to improve communication and mental processing during physical tasks.</li>
+                <li><strong>Community Re-integration:</strong> Preparing the patient to return to their home environment with maximum confidence and reduced caregiver dependency.</li>
             </ul>
+
+            <div class="highlight-box">
+                <strong>Important Note:</strong> The "Golden Period" for stroke recovery is typically the first 3 to 6 months. Early and consistent intervention significantly improves the chances of a successful recovery.
+            </div>
 
             <a href="/" class="home-btn">Back to Home Page</a>
         </div>
@@ -318,48 +481,60 @@ app.get('/ift', (req, res) => {
 });
 
 
-// --- ADD THIS ROUTE FOR NECK PAIN ---
-app.get('/neck-pain', (req, res) => {
+
+
+app.get('/geriatric-rehab', (req, res) => {
     res.send(`
     <!DOCTYPE html>
     <html lang="en">
     <head>
         <meta charset="UTF-8">
-        <title>Neck Pain - Recovery Goals</title>
+        <title>Geriatric Rehabilitation</title>
         <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
         <style>
             body { font-family: 'Poppins', sans-serif; line-height: 1.6; color: #1f2937; max-width: 800px; margin: 40px auto; padding: 20px; background: #f3f6f9; }
             .info-card { background: white; padding: 40px; border-radius: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.05); }
-            h1 { color: #0066cc; margin-top: 0; font-size: 2.5rem; border-bottom: 3px solid #0066cc; display: inline-block; margin-bottom: 20px; }
+            h1 { color: #d97706; margin-top: 0; font-size: 2.5rem; border-bottom: 3px solid #d97706; display: inline-block; margin-bottom: 20px; }
             h2 { color: #111827; margin-top: 30px; font-size: 1.4rem; border-left: 4px solid #10b981; padding-left: 15px; }
             ul { padding-left: 20px; }
             li { margin-bottom: 12px; }
-            .home-btn { display: inline-block; margin-top: 30px; padding: 15px 30px; background: #0066cc; color: white; text-decoration: none; border-radius: 50px; font-weight: 700; transition: 0.3s; }
-            .home-btn:hover { background: #004c99; transform: translateY(-2px); }
+            .home-btn { display: inline-block; margin-top: 30px; padding: 15px 30px; background: #d97706; color: white; text-decoration: none; border-radius: 50px; font-weight: 700; transition: 0.3s; }
+            .home-btn:hover { background: #b45309; transform: translateY(-2px); }
+            strong { color: #d97706; }
+            .stat-box { background: #fffbeb; border: 1px solid #fef3c7; padding: 20px; border-radius: 15px; margin-top: 25px; display: flex; align-items: center; gap: 15px; }
         </style>
     </head>
     <body>
         <div class="info-card">
-            <h1>Neck Pain</h1>
-            <p>Goals are split into the Acute Phase (immediate relief) and the Maintenance/Functional Phase (long-term resilience).</p>
+            <h1>Geriatric Rehabilitation</h1>
+            <p>Geriatric rehabilitation focuses on the unique physical needs of older adults. Our aim is to manage age-related conditions, restore mobility, and improve the <strong>Quality of Life</strong> for seniors, allowing them to remain active and independent.</p>
             
-            <h2>1. Short-Term Goals (Days to Weeks)</h2>
-            <p>In the initial "acute" phase, the primary aim is to calm down irritated tissues.</p>
+            
+
+            <h2>1. Short-Term Goals</h2>
             <ul>
-                <li><strong>Pain & Inflammation Management:</strong> Utilizing ice/heat, gentle manual therapy, or TENS to reduce muscle guarding.</li>
-                <li><strong>Restoring Range of Motion (ROM):</strong> Increasing the ability to look over your shoulder and tilt your head without sharp pain.</li>
-                <li><strong>Decompression:</strong> If there is numbness in arms, we work to "centralize" symptoms back to the neck.</li>
-                <li><strong>Postural Awareness:</strong> Identifying ergonomic triggers or "Text Neck" habits at your workstation.</li>
+                <li><strong>Pain Management (Arthritis/OA):</strong> Using gentle mobilization and heat/cold therapies to reduce joint stiffness and chronic aches.</li>
+                <li><strong>Fall Risk Assessment:</strong> Identifying balance deficits and environmental hazards to prevent dangerous fractures.</li>
+                <li><strong>Safe Transfers:</strong> Training the patient to move safely from sitting to standing and in/out of bed without losing balance.</li>
+                <li><strong>Respiratory Maintenance:</strong> Teaching deep breathing exercises to maintain lung capacity and prevent secondary infections like pneumonia.</li>
             </ul>
 
-            <h2>2. Long-Term Goals (Months & Beyond)</h2>
-            <p>Focusing on structural integrity and lifestyle integration.</p>
+            <h2>2. Long-Term Goals</h2>
             <ul>
-                <li><strong>Deep Neck Flexor Strengthening:</strong> Training the "core of the neck" (like longus colli) to support the cervical curve.</li>
-                <li><strong>Scapular Stability:</strong> Strengthening the upper back and shoulder blade muscles (trapezius and rhomboids).</li>
-                <li><strong>Neuromuscular Coordination:</strong> Improving proprioception, which is often diminished after whiplash.</li>
-                <li><strong>Self-Management:</strong> Providing a "rescue" routine of stretches and chin tucks for daily use.</li>
+                <li><strong>Bone Density & Strength:</strong> Implementing weight-bearing exercises to combat osteoporosis and maintain muscle mass (sarcopenia prevention).</li>
+                <li><strong>Endurance for Daily Tasks:</strong> Building the stamina required for independent grocery shopping, walking to the park, or climbing stairs.</li>
+                <li><strong>Post-Surgical Recovery:</strong> Specialized protocols for recovery after Total Hip Replacement (THR) or Total Knee Replacement (TKR).</li>
+                <li><strong>Cognitive Engagement:</strong> Coordinating movement with mental tasks to support brain health and slow the progression of dementia or Parkinson's.</li>
             </ul>
+
+            
+
+            <div class="stat-box">
+                <span style="font-size: 2rem;"></span>
+                <div>
+                    <strong>Focus on Independence:</strong> The primary measure of success in geriatric rehab is not just "healing," but ensuring the patient can perform Activities of Daily Living (ADLs) with minimal assistance.
+                </div>
+            </div>
 
             <a href="/" class="home-btn">Back to Home Page</a>
         </div>
@@ -368,39 +543,60 @@ app.get('/neck-pain', (req, res) => {
     `);
 });
 
-// --- ADD THIS ROUTE FOR KNEE PAIN ---
-app.get('/knee-pain', (req, res) => {
+
+
+
+
+
+app.get('/gait-training', (req, res) => {
     res.send(`
     <!DOCTYPE html>
     <html lang="en">
     <head>
         <meta charset="UTF-8">
-        <title>Knee Pain - Recovery Goals</title>
+        <title>Gait Training & Walking Rehab</title>
         <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
         <style>
             body { font-family: 'Poppins', sans-serif; line-height: 1.6; color: #1f2937; max-width: 800px; margin: 40px auto; padding: 20px; background: #f3f6f9; }
             .info-card { background: white; padding: 40px; border-radius: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.05); }
-            h1 { color: #0066cc; margin-top: 0; font-size: 2.5rem; border-bottom: 3px solid #0066cc; display: inline-block; margin-bottom: 20px; }
-            h2 { color: #111827; margin-top: 30px; font-size: 1.4rem; border-left: 4px solid #10b981; padding-left: 15px; }
+            h1 { color: #0ea5e9; margin-top: 0; font-size: 2.5rem; border-bottom: 3px solid #0ea5e9; display: inline-block; margin-bottom: 20px; }
+            h2 { color: #111827; margin-top: 30px; font-size: 1.4rem; border-left: 4px solid #0ea5e9; padding-left: 15px; }
             ul { padding-left: 20px; }
             li { margin-bottom: 12px; }
-            .home-btn { display: inline-block; margin-top: 30px; padding: 15px 30px; background: #0066cc; color: white; text-decoration: none; border-radius: 50px; font-weight: 700; transition: 0.3s; }
-            .home-btn:hover { background: #004c99; transform: translateY(-2px); }
+            .home-btn { display: inline-block; margin-top: 30px; padding: 15px 30px; background: #0ea5e9; color: white; text-decoration: none; border-radius: 50px; font-weight: 700; transition: 0.3s; }
+            .home-btn:hover { background: #0284c7; transform: translateY(-2px); }
+            strong { color: #0369a1; }
+            .tip-box { background: #f0f9ff; border-radius: 15px; padding: 20px; margin-top: 25px; border: 1px solid #bae6fd; }
         </style>
     </head>
     <body>
         <div class="info-card">
-            <h1>Knee Pain</h1>
-            <p>Effective knee rehabilitation focuses on immediate relief followed by long-term joint stability.</p>
+            <h1>Gait Training</h1>
+            <p>Gait training is a type of physical therapy used to help people improve their ability to stand and walk. It is essential for patients recovering from injuries, surgeries, or neurological conditions that have affected their <strong>walking pattern</strong> and stability.</p>
+
             
-            <h2>Primary Treatment Goals</h2>
+
+            <h2>1. Short-Term Goals</h2>
             <ul>
-                <li><strong>Reduce Pain and Swelling:</strong> Gentle movements and <strong>PRICE</strong> (Protection, Rest, Ice, Compression, Elevation) can help initially to manage acute symptoms.</li>
-                <li><strong>Improve Range of Motion:</strong> Targeted exercises to restore flexibility and fluid movement within the knee joint.</li>
-                <li><strong>Strengthen Muscles:</strong> Strengthening the supporting muscles around the knee—specifically the <strong>quadriceps, hamstrings, glutes, and calves</strong>—to provide better stability.</li>
-                <li><strong>Improve Balance and Proprioception:</strong> Exercises to enhance your body's awareness of its position in space, which is crucial for preventing future re-injury.</li>
-                <li><strong>Restore Function:</strong> A phased plan for gradually returning to your specific daily activities and sports.</li>
+                <li><strong>Weight-Bearing Tolerance:</strong> Gradually increasing the amount of weight the patient can comfortably put on an injured or surgical limb.</li>
+                <li><strong>Static & Dynamic Balance:</strong> Improving the ability to stay upright while standing still (static) and while moving or shifting weight (dynamic).</li>
+                <li><strong>Assistive Device Proficiency:</strong> Training the patient on the correct and safe use of walkers, crutches, or canes.</li>
+                <li><strong>Posture Correction:</strong> Ensuring the head, shoulders, and hips are aligned correctly to prevent secondary back or hip pain.</li>
             </ul>
+
+            
+
+            <h2>2. Long-Term Goals</h2>
+            <ul>
+                <li><strong>Gait Symmetry:</strong> Correcting limping or "guarding" patterns to ensure both legs are working equally and efficiently.</li>
+                <li><strong>Community Mobility:</strong> Training to walk on uneven surfaces, such as grass, gravel, or ramps, and navigating curbs and stairs.</li>
+                <li><strong>Increased Walking Distance:</strong> Building cardiovascular and muscular endurance so the patient can walk longer distances without fatigue.</li>
+                <li><strong>Return to Independence:</strong> Achieving a walking speed and stability level that allows for safe navigation of busy environments like shopping malls or streets.</li>
+            </ul>
+
+            <div class="tip-box">
+                <strong>Why Gait Matters:</strong> An abnormal walking pattern doesn't just make walking difficult—it can lead to "compensation injuries" in the opposite hip, lower back, or knees. Proper training fixes the root cause before other problems start.
+            </div>
 
             <a href="/" class="home-btn">Back to Home Page</a>
         </div>
@@ -408,6 +604,68 @@ app.get('/knee-pain', (req, res) => {
     </html>
     `);
 });
+
+
+
+
+
+app.get('/post-op-rehab', (req, res) => {
+    res.send(`
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <title>Post-Operation Rehabilitation</title>
+        <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+        <style>
+            body { font-family: 'Poppins', sans-serif; line-height: 1.6; color: #1f2937; max-width: 800px; margin: 40px auto; padding: 20px; background: #f3f6f9; }
+            .info-card { background: white; padding: 40px; border-radius: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.05); }
+            h1 { color: #dc2626; margin-top: 0; font-size: 2.5rem; border-bottom: 3px solid #dc2626; display: inline-block; margin-bottom: 20px; }
+            h2 { color: #111827; margin-top: 30px; font-size: 1.4rem; border-left: 4px solid #dc2626; padding-left: 15px; }
+            ul { padding-left: 20px; }
+            li { margin-bottom: 12px; }
+            .home-btn { display: inline-block; margin-top: 30px; padding: 15px 30px; background: #dc2626; color: white; text-decoration: none; border-radius: 50px; font-weight: 700; transition: 0.3s; }
+            .home-btn:hover { background: #991b1b; transform: translateY(-2px); }
+            strong { color: #dc2626; }
+            .safety-box { background: #fff1f2; border: 1px solid #fecaca; padding: 20px; border-radius: 15px; margin-top: 25px; }
+        </style>
+    </head>
+    <body>
+        <div class="info-card">
+            <h1>Post-Op Rehabilitation</h1>
+            <p>Post-surgical rehabilitation is a structured program of physiotherapy designed to guide a patient through the critical stages of healing after surgery. Our priority is to protect the surgical site while restoring <strong>full movement</strong> and function.</p>
+
+            
+
+            <h2>1. Short-Term Goals (Phase I: Protection)</h2>
+            <ul>
+                <li><strong>Pain & Swelling Management:</strong> Using Cryotherapy (ice), compression, and gentle movement to reduce inflammation and manage post-surgical pain.</li>
+                <li><strong>Circulation Support:</strong> Performing "Ankle Pumps" and basic limb movements to prevent Deep Vein Thrombosis (DVT) and improve blood flow.</li>
+                <li><strong>Protection of Surgical Site:</strong> Teaching the patient how to move, sleep, and perform basic tasks without putting stress on the stitches or implants.</li>
+                <li><strong>Scar Tissue Management:</strong> Gentle manual therapy to ensure the healing incision remains flexible and does not adhere to underlying tissues.</li>
+            </ul>
+
+            
+
+            <h2>2. Long-Term Goals (Phase II & III: Restoration)</h2>
+            <ul>
+                <li><strong>Muscle Re-activation:</strong> Using isometric and progressive resistance exercises to wake up muscles that were inhibited during the surgical procedure.</li>
+                <li><strong>Joint Flexibility:</strong> Gradually increasing the Range of Motion (ROM) to reach the "functional norm" required for the patient's specific joint.</li>
+                <li><strong>Functional Strengthening:</strong> Re-building the strength necessary for movements like climbing stairs, squatting, or lifting, specific to the patient's lifestyle.</li>
+                <li><strong>Full Return to Sport/Activity:</strong> Implementing advanced balance and agility drills once the surgeon has cleared the tissues for high-impact activity.</li>
+            </ul>
+
+
+            <a href="/" class="home-btn">Back to Home Page</a>
+        </div>
+    </body>
+    </html>
+    `);
+});
+
+
+
+
 
 
 app.get('/ergonomics', (req, res) => {
@@ -416,32 +674,65 @@ app.get('/ergonomics', (req, res) => {
     <html lang="en">
     <head>
         <meta charset="UTF-8">
-        <title>Knee Pain - Recovery Goals</title>
+        <title>Ergonomics & Posture</title>
         <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
         <style>
             body { font-family: 'Poppins', sans-serif; line-height: 1.6; color: #1f2937; max-width: 800px; margin: 40px auto; padding: 20px; background: #f3f6f9; }
             .info-card { background: white; padding: 40px; border-radius: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.05); }
-            h1 { color: #0066cc; margin-top: 0; font-size: 2.5rem; border-bottom: 3px solid #0066cc; display: inline-block; margin-bottom: 20px; }
-            h2 { color: #111827; margin-top: 30px; font-size: 1.4rem; border-left: 4px solid #10b981; padding-left: 15px; }
+            h1 { color: #0d9488; margin-top: 0; font-size: 2.5rem; border-bottom: 3px solid #0d9488; display: inline-block; margin-bottom: 20px; }
+            h2 { color: #111827; margin-top: 30px; font-size: 1.4rem; border-left: 4px solid #0d9488; padding-left: 15px; }
             ul { padding-left: 20px; }
             li { margin-bottom: 12px; }
-            .home-btn { display: inline-block; margin-top: 30px; padding: 15px 30px; background: #0066cc; color: white; text-decoration: none; border-radius: 50px; font-weight: 700; transition: 0.3s; }
-            .home-btn:hover { background: #004c99; transform: translateY(-2px); }
+            .home-btn { display: inline-block; margin-top: 30px; padding: 15px 30px; background: #0d9488; color: white; text-decoration: none; border-radius: 50px; font-weight: 700; transition: 0.3s; }
+            .home-btn:hover { background: #0f766e; transform: translateY(-2px); }
+            strong { color: #0d9488; }
+            .setup-box { background: #f0fdfa; border-radius: 15px; padding: 25px; margin-top: 25px; border: 1px solid #ccfbf1; }
+            .setup-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 15px; }
+            @media (max-width: 600px) { .setup-grid { grid-template-columns: 1fr; } }
         </style>
     </head>
     <body>
         <div class="info-card">
-            <h1>Knee Pain</h1>
-            <p>Effective knee rehabilitation focuses on immediate relief followed by long-term joint stability.</p>
+            <h1>Ergonomics</h1>
+            <p>Ergonomics is the science of designing the workplace to fit the user. In physiotherapy, we focus on <strong>Postural Correction</strong> to reduce muscle fatigue, increase productivity, and prevent chronic conditions like "Text Neck" or "Computer Back."</p>
+
             
-            <h2>Primary Treatment Goals</h2>
+
+            <h2>1. Common Issues Addressed</h2>
             <ul>
-                <li><strong>Reduce Pain and Swelling:</strong> Gentle movements and <strong>PRICE</strong> (Protection, Rest, Ice, Compression, Elevation) can help initially to manage acute symptoms.</li>
-                <li><strong>Improve Range of Motion:</strong> Targeted exercises to restore flexibility and fluid movement within the knee joint.</li>
-                <li><strong>Strengthen Muscles:</strong> Strengthening the supporting muscles around the knee—specifically the <strong>quadriceps, hamstrings, glutes, and calves</strong>—to provide better stability.</li>
-                <li><strong>Improve Balance and Proprioception:</strong> Exercises to enhance your body's awareness of its position in space, which is crucial for preventing future re-injury.</li>
-                <li><strong>Restore Function:</strong> A phased plan for gradually returning to your specific daily activities and sports.</li>
+                <li><strong>Upper Cross Syndrome:</strong> Correcting rounded shoulders and forward head posture caused by prolonged desk work.</li>
+                <li><strong>Repetitive Strain Injuries (RSI):</strong> Managing conditions like Carpal Tunnel Syndrome or Tennis Elbow caused by poor keyboard/mouse habits.</li>
+                <li><strong>Sciatica & Lower Back Strain:</strong> Reducing pressure on the lumbar discs through proper seating and lumbar support.</li>
+                <li><strong>Digital Eye Strain:</strong> Advice on screen distance and lighting to reduce headaches and neck tension.</li>
             </ul>
+
+            <h2>2. Ergonomic Goals</h2>
+            <ul>
+                <li><strong>Neutral Spine Alignment:</strong> Training the body to maintain the natural "S-curve" of the spine during sitting and standing.</li>
+                <li><strong>Core Muscle Endurance:</strong> Strengthening the deep stabilizers so the body can maintain good posture without conscious effort.</li>
+                <li><strong>Workplace Modification:</strong> Professional advice on chair height, monitor placement, and footrests.</li>
+                <li><strong>Active Micro-breaks:</strong> Implementing "Stretch-and-Move" protocols every 30-60 minutes to prevent muscle "creep" and stiffness.</li>
+            </ul>
+
+            
+
+            <div class="setup-box">
+                <h3>The 90-90-90 Rule</h3>
+                <div class="setup-grid">
+                    <div>
+                        <strong>1. Elbows:</strong> Bent at 90° and close to your body.
+                    </div>
+                    <div>
+                        <strong>2. Hips:</strong> Bent at 90° with a supported lower back.
+                    </div>
+                    <div>
+                        <strong>3. Knees:</strong> Bent at 90° with feet flat on the floor or a footrest.
+                    </div>
+                    <div>
+                        <strong>4. Eyes:</strong> Level with the top third of your monitor screen.
+                    </div>
+                </div>
+            </div>
 
             <a href="/" class="home-btn">Back to Home Page</a>
         </div>
@@ -450,38 +741,61 @@ app.get('/ergonomics', (req, res) => {
     `);
 });
 
-app.get('/Pain-Management', (req, res) => {
+
+
+
+app.get('/pain-management', (req, res) => {
     res.send(`
     <!DOCTYPE html>
     <html lang="en">
     <head>
         <meta charset="UTF-8">
-        <title>Knee Pain - Recovery Goals</title>
+        <title>Pain Management Therapy</title>
         <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
         <style>
             body { font-family: 'Poppins', sans-serif; line-height: 1.6; color: #1f2937; max-width: 800px; margin: 40px auto; padding: 20px; background: #f3f6f9; }
             .info-card { background: white; padding: 40px; border-radius: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.05); }
-            h1 { color: #0066cc; margin-top: 0; font-size: 2.5rem; border-bottom: 3px solid #0066cc; display: inline-block; margin-bottom: 20px; }
-            h2 { color: #111827; margin-top: 30px; font-size: 1.4rem; border-left: 4px solid #10b981; padding-left: 15px; }
+            h1 { color: #1e40af; margin-top: 0; font-size: 2.5rem; border-bottom: 3px solid #1e40af; display: inline-block; margin-bottom: 20px; }
+            h2 { color: #111827; margin-top: 30px; font-size: 1.4rem; border-left: 4px solid #3b82f6; padding-left: 15px; }
             ul { padding-left: 20px; }
             li { margin-bottom: 12px; }
-            .home-btn { display: inline-block; margin-top: 30px; padding: 15px 30px; background: #0066cc; color: white; text-decoration: none; border-radius: 50px; font-weight: 700; transition: 0.3s; }
-            .home-btn:hover { background: #004c99; transform: translateY(-2px); }
+            .home-btn { display: inline-block; margin-top: 30px; padding: 15px 30px; background: #1e40af; color: white; text-decoration: none; border-radius: 50px; font-weight: 700; transition: 0.3s; }
+            .home-btn:hover { background: #1e3a8a; transform: translateY(-2px); }
+            strong { color: #1e40af; }
+            .relief-box { background: #eff6ff; border-radius: 15px; padding: 25px; margin-top: 25px; border: 1px solid #dbeafe; }
+            .pain-scale { display: flex; justify-content: space-between; margin: 20px 0; padding: 10px; background: #f8fafc; border-radius: 10px; font-size: 0.8rem; text-align: center; }
         </style>
     </head>
     <body>
         <div class="info-card">
-            <h1>Knee Pain</h1>
-            <p>Effective knee rehabilitation focuses on immediate relief followed by long-term joint stability.</p>
-            
-            <h2>Primary Treatment Goals</h2>
+            <h1>Pain Management</h1>
+            <p>Pain management in physiotherapy focuses on identifying the root cause of discomfort and using a combination of manual therapy, modalities, and movement to reduce <strong>pain intensity</strong> and improve function.</p>
+
+           
+
+            <h2>1. Our Approach to Pain Relief</h2>
             <ul>
-                <li><strong>Reduce Pain and Swelling:</strong> Gentle movements and <strong>PRICE</strong> (Protection, Rest, Ice, Compression, Elevation) can help initially to manage acute symptoms.</li>
-                <li><strong>Improve Range of Motion:</strong> Targeted exercises to restore flexibility and fluid movement within the knee joint.</li>
-                <li><strong>Strengthen Muscles:</strong> Strengthening the supporting muscles around the knee—specifically the <strong>quadriceps, hamstrings, glutes, and calves</strong>—to provide better stability.</li>
-                <li><strong>Improve Balance and Proprioception:</strong> Exercises to enhance your body's awareness of its position in space, which is crucial for preventing future re-injury.</li>
-                <li><strong>Restore Function:</strong> A phased plan for gradually returning to your specific daily activities and sports.</li>
+                <li><strong>Manual Therapy:</strong> Joint mobilizations and soft tissue release to reduce mechanical pressure on nerves and sensitive tissues.</li>
+                <li><strong>Electro-Modalities:</strong> Utilizing TENS, Ultrasound, and IFT to interfere with pain signals and stimulate natural healing.</li>
+                <li><strong>Dry Needling & Trigger Point Therapy:</strong> Targeting specific "knots" in the muscle that cause referred pain and stiffness.</li>
+                <li><strong>Therapeutic Exercise:</strong> Prescribing specific movements that desensitize the nervous system and build resilience.</li>
             </ul>
+
+          
+
+            <h2>2. Goals of Treatment</h2>
+            <ul>
+                <li><strong>Desensitization:</strong> Calming an overactive nervous system that has become "hypersensitive" to movement after chronic pain.</li>
+                <li><strong>Break the Pain-Spasm Cycle:</strong> Preventing the body from tensing up in response to pain, which often leads to more pain.</li>
+                <li><strong>Restoration of Sleep:</strong> Reducing nighttime discomfort so the body can enter the deep healing stages of sleep.</li>
+                <li><strong>Self-Management Education:</strong> Empowering you with "First-Aid" techniques and ergonomic fixes to manage flare-ups at home.</li>
+            </ul>
+
+            <div class="relief-box">
+                <h3>Acute vs. Chronic Pain</h3>
+                <p><strong>Acute Pain:</strong> Acts as a warning signal for tissue damage (e.g., a fresh sprain). Focus is on protection and reducing inflammation.</p>
+                <p style="margin-top:10px;"><strong>Chronic Pain:</strong> Often persists after tissues have healed. Focus is on retraining the brain and nervous system to movement without fear.</p>
+            </div>
 
             <a href="/" class="home-btn">Back to Home Page</a>
         </div>
@@ -491,25 +805,171 @@ app.get('/Pain-Management', (req, res) => {
 });
 
 
-app.post('/submit-feedback', (req, res) => {
+app.get('/injury-prevention', (req, res) => {
+    res.send(`
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <title>Injury Prevention - Muni Physio Care</title>
+        <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+        <style>
+            body { font-family: 'Poppins', sans-serif; line-height: 1.6; color: #1f2937; max-width: 800px; margin: 40px auto; padding: 20px; background: #f3f6f9; }
+            .info-card { background: white; padding: 40px; border-radius: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.05); }
+            h1 { color: #6d28d9; margin-top: 0; font-size: 2.5rem; border-bottom: 3px solid #6d28d9; display: inline-block; margin-bottom: 20px; }
+            h2 { color: #111827; margin-top: 30px; font-size: 1.4rem; border-left: 4px solid #10b981; padding-left: 15px; }
+            ul { padding-left: 20px; }
+            li { margin-bottom: 12px; }
+            .home-btn { display: inline-block; margin-top: 30px; padding: 15px 30px; background: #6d28d9; color: white; text-decoration: none; border-radius: 50px; font-weight: 700; transition: 0.3s; }
+            .home-btn:hover { background: #5b21b6; transform: translateY(-2px); }
+            strong { color: #6d28d9; }
+            .prevention-box { background: #f5f3ff; border: 1px solid #ddd6fe; padding: 25px; border-radius: 15px; margin-top: 25px; }
+        </style>
+    </head>
+    <body>
+        <div class="info-card">
+            <h1>Injury Prevention</h1>
+            <p>Injury prevention is the proactive practice of strengthening the body and correcting movement patterns to stop injuries before they happen. Whether you are an athlete or a desk worker, <strong>prehabilitation</strong> ensures your body can handle the stresses of daily life.</p>
 
-    const { name, mobile, details, rating } = req.body;
+            
 
-    const stmt = db.prepare("INSERT INTO feedbacks (patient_name, mobile, details, rating) VALUES (?, ?, ?, ?)");
+            <h2>1. Key Pillars of Prevention</h2>
+            <ul>
+                <li><strong>Dynamic Warm-ups:</strong> Preparing muscles and joints for activity by increasing blood flow and improving "functional" flexibility.</li>
+                <li><strong>Muscle Balance:</strong> Identifying and strengthening "weak links" in the kinetic chain to prevent overcompensation by other muscles.</li>
+                <li><strong>Load Management:</strong> Training the body to handle gradual increases in physical stress to prevent overuse injuries like stress fractures.</li>
+                <li><strong>Proprioceptive Training:</strong> Enhancing the body's subconscious ability to stabilize joints, especially the ankles and knees, during sudden movements.</li>
+            </ul>
 
-    stmt.run(name, mobile, details, rating, (err) => {
+            
 
-        if (err) return res.send("Error saving feedback");
+            <h2>2. Our Preventive Approach</h2>
+            <ul>
+                <li><strong>Screening & Assessment:</strong> Using functional movement screens to find hidden imbalances or stiff joints.</li>
+                <li><strong>Sport-Specific Conditioning:</strong> Tailoring exercises to the specific demands of your sport or hobby (e.g., rotator cuff stability for swimmers).</li>
+                <li><strong>Technique Correction:</strong> Analyzing your lifting, running, or sitting form to ensure optimal biomechanics.</li>
+                <li><strong>Recovery Strategies:</strong> Education on sleep, nutrition, and "active recovery" to allow tissues to repair efficiently.</li>
+            </ul>
 
-        res.redirect('/');
+            <div class="prevention-box">
+                <h3>The "Prehab" Mindset</h3>
+                <p>Don't wait for the pain to start. Prehabilitation is 10 times more effective (and cheaper) than rehabilitation. A resilient body is built on <strong>consistency</strong> and <strong>proper form</strong>.</p>
+            </div>
 
-    });
-
-    stmt.finalize();
-
+            <a href="/" class="home-btn">Back to Home Page</a>
+        </div>
+    </body>
+    </html>
+    `);
 });
 
 
+// GET existing sessions for a patient
+app.get('/api/sessions/:id', async (req, res) => {
+    try {
+        const result = await pool.query(
+            "SELECT * FROM sessions WHERE patient_id = $1 ORDER BY session_number ASC", 
+            [req.params.id]
+        );
+        res.json(result.rows);
+    } catch (e) { 
+        res.status(500).send(e.message); 
+    }
+});
+
+// SAVE or UPDATE sessions
+app.post('/api/save-sessions', async (req, res) => {
+    const { patient_id, sessions } = req.body;
+    try {
+        // Delete old sessions and replace with the new updated list
+        await pool.query("DELETE FROM sessions WHERE patient_id = $1", [patient_id]);
+        for (const s of sessions) {
+            await pool.query(
+                "INSERT INTO sessions (patient_id, session_number, session_date, session_details) VALUES ($1, $2, $3, $4)",
+                [patient_id, s.session_number, s.session_date, s.session_details]
+            );
+        }
+        res.sendStatus(200);
+    } catch (e) { 
+        res.status(500).send(e.message); 
+    }
+});
+
+
+
+
+
+
+
+// --- CONSOLIDATED FEEDBACK ROUTE WITH STRICT ID CHECK ---
+app.post('/submit-feedback', async (req, res) => {
+    // 1. Capture the data from the form
+    const { patient_id, name, mobile, details, rating } = req.body;
+
+    // Log for debugging (Check your terminal to see if ID is arriving)
+    console.log(`Attempting feedback for Patient ID: ${patient_id}`);
+
+    try {
+        // 2. STRICT DATABASE VERIFICATION
+        // We look for the exact string in the 'patient_id' column of 'patients' table
+        const verifyPatient = await pool.query(
+            "SELECT name FROM patients WHERE patient_id = $1", 
+            [patient_id]
+        );
+
+        // 3. IF NO MATCH IS FOUND
+        if (verifyPatient.rows.length === 0) {
+            console.log("Verification Failed: ID not found in database.");
+            return res.send(`
+                <script>
+                    alert("ERROR: Patient ID '${patient_id}' does not exist in our records.\\n\\nPlease check your ID and try again.");
+                    window.history.back(); // Sends user back to the form with their data intact
+                </script>
+            `);
+        }
+
+        // 4. IF MATCH IS FOUND -> SAVE FEEDBACK
+        const patientFoundName = verifyPatient.rows[0].name;
+        console.log(`Verification Success: ID belongs to ${patientFoundName}`);
+
+        await pool.query(
+            "INSERT INTO feedbacks (patient_name, mobile, details, rating) VALUES ($1, $2, $3, $4)",
+            [name, mobile, details, rating]
+        );
+
+        // 5. SUCCESS RESPONSE
+        res.send(`
+            <script>
+                alert("Success! Feedback recorded for ${patientFoundName}.");
+                window.location.href = "/";
+            </script>
+        `);
+
+    } catch (err) {
+        console.error('Database Error during feedback submission:', err);
+        res.status(500).send("A server error occurred. Please try again later.");
+    }
+});
+
+
+// NEW: API to fetch patient details by ID for feedback
+app.get('/api/get-patient/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const result = await pool.query(
+            "SELECT name, mobile FROM patients WHERE patient_id = $1", 
+            [id]
+        );
+
+        if (result.rows.length > 0) {
+            res.json({ success: true, patient: result.rows[0] });
+        } else {
+            res.json({ success: false, message: "Patient ID not found" });
+        }
+    } catch (err) {
+        res.status(500).json({ success: false, error: "Database error" });
+    }
+});
 
 // 4. FRONTEND TEMPLATE
 
@@ -547,65 +1007,68 @@ function renderHTML(doctor, feedbacks, stats) {
 
     `).join('');
 
-    const docName = doctor ? doctor.name : "Dr. Muniraju SN PT";
+    const docName = doctor ? doctor.name : "Dr. Munikrishna SN PT";
 
     const docQual = doctor ? doctor.qualification : "Specialist";
 
     const docImg = (doctor && doctor.image_url) ? doctor.image_url : "/doctor.jpg";
 
-    const docPhone = doctor ? doctor.phone : "9019996573";
+    const docPhone = doctor ? doctor.phone : "9113602399";
 
     const whatsAppLink = `https://wa.me/91${docPhone}`;
 
     const callLink = `tel:+91${docPhone}`;
 
+
+
     const servicesContent = `
+<div class="services-grid">
+    <div class="service-card">
+        <h3><a href="/electro">Electro Therapy</a></h3>
+        <p>Advanced electrical stimulation to modulate pain and accelerate tissue repair.</p>
+    </div>
 
+    <div class="service-card">
+        <h3><a href="/exercise-therapy">Exercise Therapy</a></h3>
+        <p>Customized strengthening and mobility programs to restore full physical function.</p>
+    </div>
 
-<div class="service-card">
-    <h3><a href="/ultrasound" style="color: var(--primary); text-decoration: underline;">Electro Therapy</a></h3>
-    <p>Deep heat therapy for pain reduction and rapid healing. Click to view treatment goals.</p>
+    <div class="service-card">
+        <h3><a href="/stroke-rehab">Stroke Rehabilitation</a></h3>
+        <p>Neuroplasticity-focused training to regain motor control and daily independence.</p>
+    </div>
+
+    <div class="service-card">
+        <h3><a href="/geriatric-rehab">Geriatric Rehabilitation</a></h3>
+        <p>Gentle, effective care for seniors to improve balance and prevent fall-related injuries.</p>
+    </div>
+
+    <div class="service-card">
+        <h3><a href="/gait-training">Gait Training</a></h3>
+        <p>Comprehensive walking analysis and re-education for a smoother, safer stride.</p>
+    </div>
+
+    <div class="service-card">
+        <h3><a href="/post-op-rehab">Post Operation Rehab</a></h3>
+        <p>Phase-by-phase recovery protocols to protect surgical sites and restore joint range.</p>
+    </div>
+
+    <div class="service-card">
+        <h3><a href="/ergonomics">Ergonomics</a></h3>
+        <p>Professional workplace assessment and postural correction to eliminate strain.</p>
+    </div>
+
+    <div class="service-card">
+        <h3><a href="/pain-management">Pain Management</a></h3>
+        <p>A multi-modal approach to desensitize the nervous system and manage chronic pain.</p>
+    </div>
+
+    <div class="service-card">
+        <h3><a href="/injury-prevention">Injury Prevention</a></h3>
+        <p>Identifying weaknesses early, enhancing performance, and building resilience against strains, sprains, and overuse issues</p>
+    </div>
 </div>
-
-
-<div class="service-card">
-    <h3><a href="/ift" style="color: var(--primary); text-decoration: underline;">Excersise Therapy</a></h3>
-    <p>Interferential currents to relieve inflammation. Click to view treatment goals.</p>
-</div>
-
-<div class="service-card">
-    <h3><a href="/tens" style="color: var(--primary); text-decoration: underline;">Stock Rehablitation</a></h3>
-    <p>Nerve stimulation to block pain signals effectively. Click to view treatment goals.</p>
-</div>
-
-<div class="service-card">
-    <h3><a href="/back-pain" style="color: var(--primary); text-decoration: underline;">Geriatric Rehablitation</a></h3>
-    <p>Core strengthening and posture correction exercises. Click to view recovery goals.</p>
-</div>
-
-
-<div class="service-card">
-    <h3><a href="/neck-pain" style="color: var(--primary); text-decoration: underline;">Git training</a></h3>
-    <p>Manual therapy to improve mobility and reduce stiffness. Click to view recovery goals.</p>
-</div>
-
-<div class="service-card">
-    <h3><a href="/knee-pain" style="color: var(--primary); text-decoration: underline;">Post Operation Rehablitation</a></h3>
-    <p>Stability training for quads and hamstrings.Click to view recovery goals.</p>
-</div>
-
-<div class="service-card">
-    <h3><a href="/Ergonomics" style="color: var(--primary); text-decoration: underline;">Ergonomics</a></h3>
-    <p>Stability training for quads and hamstrings.Click to view recovery goals.</p>
-</div>
-
-<div class="service-card">
-    <h3><a href="/Pain-Management" style="color: var(--primary); text-decoration: underline;">Pain Management</a></h3>
-    <p>Stability training for quads and hamstrings.Click to view recovery goals.</p>
-</div>
-
-
-    `;
+`;
 
     // Header Background Image
 
@@ -620,7 +1083,8 @@ function renderHTML(doctor, feedbacks, stats) {
 <title>Muni Physio Care</title>
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
-
+       
+        
             :root { 
 
                 --primary: #0066cc; 
@@ -791,7 +1255,7 @@ function renderHTML(doctor, feedbacks, stats) {
 
             .btn-group { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 30px; }
 
-            .btn { padding: 16px; border: none; border-radius: 16px; color: white; cursor: pointer; text-decoration: none; font-weight: 600; font-size: 1rem; text-align: center; transition: 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px; }
+            .btn { padding: 5px; border: none; border-radius: 16px; color: white; cursor: pointer; text-decoration: none; font-weight: 600; font-size: 1rem; text-align: center; transition: 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px; }
 
             .call { background: var(--secondary); }
 
@@ -895,19 +1359,54 @@ function renderHTML(doctor, feedbacks, stats) {
 
             button[type="submit"]:hover::after { transform: translateX(5px); }
 
-            /* REVIEWS */
+            /* Container for the reviews */
+.reviews-section {
+    padding: 5px;
+}
 
-            .reviews-section { max-height: 600px; overflow-y: auto; padding-right: 10px; }
+/* Grid that switches from 1 column on mobile to 2 on desktop */
+.feedback-grid {
+    display: grid;
+    grid-template-columns: 1fr; /* Mobile: 1 column */
+    gap: 20px;
+}
 
-            .feedback-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
+@media (min-width: 768px) {
+    .feedback-grid {
+        grid-template-columns: 1fr 1fr; /* Desktop: 2 columns */
+    }
+}
+
+.feedback-card {
+    background: #f8fafc;
+    padding: 20px;
+    border-radius: 5px;
+    border: 1px solid #e2e8f0;
+    transition: transform 0.2s;
+}
+
+.feedback-card:hover {
+    transform: translateY(-5px);
+    border-color: var(--primary);
+}   
+/* REVIEWS */
+
+          .reviews-section { max-height: 600px; overflow-y: auto; padding-right: 10px; }
+
+           .feedback-grid {display: grid;grid-template-columns: 1fr; /* Mobile: 1 column */gap: 5px;}
 
             .feedback-card { background: #f8fafc; padding: 25px; border-radius: 20px; border: 1px solid #f1f5f9; }
 
-            .feedback-header { display: flex; align-items: center; gap: 15px; margin-bottom: 15px; }
+            .feedback-header { display: flex; align-items: center; gap: 5px; margin-bottom: 5px; }
 
             .user-avatar { width: 45px; height: 45px; background: #bfdbfe; color: var(--primary); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 1.2rem; }
 
-            .stars { color: #f59e0b; letter-spacing: 2px; font-size: 0.9rem; }
+            .stars { color: #f59e0b; letter-spacing: 2px; font-size: 0.9rem; 
+@media (min-width: 30px) {
+    .feedback-grid {
+        grid-template-columns: 1fr 1fr; /* Desktop: 2 columns */
+    }
+}}
 
             /* MODAL */
 
@@ -936,11 +1435,66 @@ function renderHTML(doctor, feedbacks, stats) {
                 .main-content { margin-top: 30px; }
 
             }
+
+/* Container for the static 3x3 grid */
+.services-grid {
+    display: grid;
+    /* Desktop: exactly 3 columns */
+    grid-template-columns: repeat(2, 1fr); 
+    gap: 20px;
+    margin: 20px 0;
+}
+
+.service-card {
+    background: #ffffff;
+    padding: 25px 20px;
+    border-radius: 15px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+    text-align: center;
+    transition: all 0.3s ease;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    justify-content: center;
+}
+
+.service-card:hover {
+    transform: translateY(-5px);
+    border-color: var(--primary); /* Highlights the card on hover */
+    box-shadow: 0 12px 24px rgba(0,0,0,0.1);
+}
+
+.service-card h3 {
+    margin: 0 0 10px 0;
+    font-size: 1.15rem;
+}
+
+.service-card h3 a {
+    color: var(--primary);
+    text-decoration: underline;
+}
+
+.service-card p {
+    font-size: 0.9rem;
+    color: #64748b;
+    margin: 0;
+    line-height: 1.5;
+}
+
+/* Responsive: Adjust columns based on screen size */
+@media (max-width: 992px) {
+    .services-grid { grid-template-columns: repeat(2, 1fr); } /* 2 per row for tablets */
+}
+
+@media (max-width: 600px) {
+    .services-grid { grid-template-columns: 1fr; } /* 1 per row for phones */
+}
 </style>
 </head>
 <body>
 <div class="header-section">
-<h1 class="main-title">Muni Physio Care</h1>
+<h1 class="main-title">Muni Physio Care & Home Services</h1>
 <div class="sub-title">Advanced Physiotherapy & Rehabilitation Center</div>
 </div>
 <div class="container">
@@ -957,6 +1511,8 @@ function renderHTML(doctor, feedbacks, stats) {
 <a href="${callLink}" class="btn call">Call Now</a>
 <a href="${whatsAppLink}" target="_blank" class="btn msg">WhatsApp</a>
 </div>
+
+
 <div class="video-section">
 <h3>Exercise Library</h3>
 <button class="video-btn" onclick="openVideo('https://www.youtube.com/embed/ze3H9ZaGFVE')">
@@ -982,16 +1538,21 @@ function renderHTML(doctor, feedbacks, stats) {
 </div>
 </div>
 </div>
+
+
 <div class="main-content">
-<div class="services-container">
-<div class="section-header">Our Specialized Services</div>
-<div class="services-wrapper">
-<div class="scroll-track">
-
-                        ${servicesContent}
-
-                        ${servicesContent}
+<div style="display: flex; gap: 5px; justify-content: left ; width: %;">
+    <div class="service-card" style="flex: 1;">
+        <a href="/registration" class="btn" style="background: #10b981; display: block; margin-top: 2px;">Patient Registration</a>
+    </div>
+    <div class="service-card" style="flex: 1;">
+        <a href="/admin-login" class="btn" style="background: #10b981; display: block; margin-top: 2px;">Only For Admin</a>
+    </div>
 </div>
+
+<div class="card">
+    <div class="section-header">Our Specialized Services</div>
+    ${servicesContent}
 </div>
 
 <style>
@@ -1022,17 +1583,17 @@ function renderHTML(doctor, feedbacks, stats) {
     <div class="section-header">Treatment Available For</div>
     
     <div>
-        <div class="condition-item"><strong>1.</strong> All Joint Pains</div>
-        <div class="condition-item"><strong>2.</strong> Frozen Shoulder</div>
-        <div class="condition-item"><strong>3.</strong> Balance Issues</div>
-        
-        <div class="condition-item"><strong>4.</strong> Back Pain</div>
-        <div class="condition-item"><strong>5.</strong> Rotator Cuff Tear</div>
-        <div class="condition-item"><strong>6.</strong> Nerve Related Issues</div>
-        
-        <div class="condition-item"><strong>7.</strong> ACL Tear</div>
-        <div class="condition-item"><strong>8.</strong> Stroke Rehab</div>
-        <div class="condition-item"><strong>9.</strong> Post-Op Rehab</div>
+        <div class="condition-item">1.<strong> All Joint Pains</strong></div>
+        <div class="condition-item">2.<strong> Frozen Shoulder</strong></div>
+        <div class="condition-item">3.<strong> Balance Issues</strong></div>     
+        <div class="condition-item">4.<strong> Back Pain</strong></div>
+        <div class="condition-item">5.<strong> Rotator Cuff Tear</strong></div>
+        <div class="condition-item">6.<strong> Nerve Related Issues</strong></div>
+        <div class="condition-item">7.<strong> ACL Tear</strong></div>
+        <div class="condition-item">8.<strong> Stroke Rehab</strong></div>
+        <div class="condition-item">9.<strong> Post-Op Rehab</strong></div>
+        <div class="condition-item">10.<strong> IVDP</strong></div>
+        <div class="condition-item">11.<strong> OA Knee</strong></div>
     <p style="text-align: left; color: var(--text-light); font-weight: 600; margin-top: 10px;">& many more etc...</p>
     </div>
 </div>
@@ -1041,40 +1602,53 @@ function renderHTML(doctor, feedbacks, stats) {
 
 
 <div class="card reviews-section">
-<div class="section-header">Patient Reviews</div>
+<div class="section-header">Recent Patient Reviews </div>
 <div class="feedback-grid">
 
                     ${feedbackListHtml.length > 0 ? feedbackListHtml : '<p style="color:#777; font-style:italic; text-align:center;">No reviews yet. Be the first to share your experience!</p>'}
 </div>
 </div>
+
 <div class="card form-section">
-<div class="section-header">Submit Your Feedback</div>
-<form action="/submit-feedback" method="POST">
+    <div class="section-header">Submit Your Feedback</div>
+    <form action="/submit-feedback" method="POST" id="feedbackForm">
+        
+        <div class="input-group">
+            <label>Patient ID <span style="color:red">*</span></label> 
+            <input type="text" id="patient_id" name="patient_id" pattern="[0-9]{8}" maxlength="8" required 
+                   placeholder="Enter 8-digit ID" autocomplete="off">
+            <small id="idStatus" style="display:block; margin-top:5px; font-weight:bold;"></small>
+        </div>
+
+        <div class="input-group">
+            <label>Patient Name</label> 
+            <input type="text" id="patient_name" name="name" required readonly 
+                   placeholder="Auto-filled" style="background: #eef2f7; cursor: not-allowed;">
+        </div>
+
+        <div class="input-group">
+            <label>Mobile Number</label> 
+            <input type="tel" id="patient_mobile" name="mobile" required readonly 
+                   placeholder="Auto-filled" style="background: #eef2f7; cursor: not-allowed;">
+        </div>
 <div class="input-group">
-<label>Patient Name <span style="color:red">*</span></label> 
-<input type="text" name="name" required placeholder="Enter full name">
-</div>
-<div class="input-group">
-<label>Mobile Number <span style="color:red">*</span></label> 
-<input type="tel" name="mobile" pattern="[0-9]{10}" required placeholder="10-digit mobile number" title="Please enter exactly 10 digits">
-</div>
-<div class="input-group">
-<label>Rate Your Experience <span style="color:red">*</span></label>
-<select name="rating" required>
-<option value="" disabled selected>Select a rating</option>
-<option value="5">${STAR_FULL}${STAR_FULL}${STAR_FULL}${STAR_FULL}${STAR_FULL} (Excellent)</option>
-<option value="4">${STAR_FULL}${STAR_FULL}${STAR_FULL}${STAR_FULL}${STAR_EMPTY} (Good)</option>
-<option value="3">${STAR_FULL}${STAR_FULL}${STAR_FULL}${STAR_EMPTY}${STAR_EMPTY} (Average)</option>
-<option value="2">${STAR_FULL}${STAR_FULL}${STAR_EMPTY}${STAR_EMPTY}${STAR_EMPTY} (Poor)</option>
-<option value="1">${STAR_FULL}${STAR_EMPTY}${STAR_EMPTY}${STAR_EMPTY}${STAR_EMPTY} (Bad)</option>
-</select>
-</div>
-<div class="input-group">
-<label>Feedback Details <span style="color:red">*</span></label> 
-<textarea name="details" rows="3" required placeholder="Tell us about your treatment experience..."></textarea>
-</div>
-<button type="submit">SUBMIT</button>
-</form>
+            <label>Rate Your Experience <span style="color:red">*</span></label>
+            <select name="rating" required>
+                <option value="" disabled selected>Select a rating</option>
+                <option value="5">${STAR_FULL}${STAR_FULL}${STAR_FULL}${STAR_FULL}${STAR_FULL} (Excellent Service)</option>
+                <option value="4">${STAR_FULL}${STAR_FULL}${STAR_FULL}${STAR_FULL}${STAR_EMPTY} (Good Service)</option>
+                <option value="3">${STAR_FULL}${STAR_FULL}${STAR_FULL}${STAR_EMPTY}${STAR_EMPTY} (Average Service)</option>
+                <option value="2">${STAR_FULL}${STAR_FULL}${STAR_EMPTY}${STAR_EMPTY}${STAR_EMPTY} (Improve In Service)</option>
+                <option value="1">${STAR_FULL}${STAR_EMPTY}${STAR_EMPTY}${STAR_EMPTY}${STAR_EMPTY} (Poor Service)</option>
+            </select>
+        </div>
+
+        <div class="input-group">
+            <label>Your Experience Feedback Details <span style="color:red">*</span></label> 
+            <textarea name="details" rows="3" required placeholder="Tell us about your treatment experience..."></textarea>
+        </div>
+        <button type="submit" id="submitBtn" disabled style="opacity:0.5; cursor:not-allowed;">SUBMIT FEEDBACK</button>
+    </form>
 </div>
 </div>
 </div>
@@ -1116,6 +1690,58 @@ function renderHTML(doctor, feedbacks, stats) {
             }
 
         }
+
+
+document.getElementById('patient_id').addEventListener('input', async function(e) {
+    const id = e.target.value;
+    const status = document.getElementById('idStatus');
+    const nameInput = document.getElementById('patient_name');
+    const mobileInput = document.getElementById('patient_mobile');
+    const submitBtn = document.getElementById('submitBtn');
+
+    // Only search when exactly 8 digits are entered
+    if (id.length === 8) {
+        status.innerText = "?? Verifying ID...";
+        status.style.color = "blue";
+
+        try {
+            const response = await fetch('/api/get-patient/' + id);
+            const data = await response.json();
+
+            if (data.success) {
+                // AUTO-FILL
+                nameInput.value = data.patient.name;
+                mobileInput.value = data.patient.mobile;
+                
+                status.innerText = "Verified: " + data.patient.name;
+                status.style.color = "green";
+                
+                // Enable Submit
+                submitBtn.disabled = false;
+                submitBtn.style.opacity = "1";
+                submitBtn.style.cursor = "pointer";
+            } else {
+                // RESET IF NOT FOUND
+                nameInput.value = "";
+                mobileInput.value = "";
+                status.innerText = "Patient ID not found. Please take our services & then base on your experice submit feedback ";
+                status.style.color = "red";
+                submitBtn.disabled = true;
+                submitBtn.style.opacity = "0.5";
+            }
+        } catch (err) {
+            status.innerText = "?? Error connecting to server.";
+        }
+    } else {
+        // Clear fields if ID is incomplete
+        nameInput.value = "";
+        mobileInput.value = "";
+        status.innerText = "";
+        submitBtn.disabled = true;
+        submitBtn.style.opacity = "0.5";
+    }
+});
+
 </script>
 </body>
 </html>
@@ -1124,9 +1750,15 @@ function renderHTML(doctor, feedbacks, stats) {
 
 }
 
+
+app.use('/', registrationRoutes(pool));
+app.use('/admin', adminRoutes(pool));
+
+
 app.listen(PORT, () => {
 
     console.log(`Server running at http://localhost:${PORT}`);
 
 });
+
  
