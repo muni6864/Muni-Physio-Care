@@ -16,7 +16,7 @@ app.use(express.static('public'));
 // 2. DATABASE SETUP (PostgreSQL)
 const pool = new Pool({
     // Use environment variable 'DATABASE_URL' which you will set in Render
-    connectionString: process.env.DATABASE_URL || "postgresql://muni_physio_care_db_rm0l_user:cItWlCZIEeN5HPzZZpoUQEC7DU4EN5m0@dpg-d5gb6qnfte5s73fh3l90-a/muni_physio_care_db_rm0l",
+    connectionString: process.env.DATABASE_URL || "postgresql://muni_physio_care_db_user:DWhmgRBdpeTYDnUarwfKlhyKUa8SBgyg@dpg-d5gak2ffte5s73fgn5fg-a.singapore-postgres.render.com/muni_physio_care_db",
     ssl: {
         rejectUnauthorized: false 
     }
@@ -94,7 +94,7 @@ CREATE TABLE IF NOT EXISTS sessions (
         if (res.rows.length === 0) {
             await pool.query(
                 "INSERT INTO doctor (name, qualification, image_url, phone) VALUES ($1, $2, $3, $4)",
-                ['Dr. Munikrishna SN PT', 'Bachelor of Physiotherapy', '/doctor.jpg', '9148171372']
+                ['Dr. Munikrishna SN PT', 'Bachelor of Physiotherapy', '/doctor.jpg', '9113602399']
             );
         }
         console.log('Connected to Render PostgreSQL and initialized tables.');
@@ -285,7 +285,7 @@ app.post('/api/send-reset', async (req, res) => {
 
             <div class="btn-container">
                 <a href="/" class="home-btn">Back to Home</a>
-                <a href="https://wa.me/9148171372" class="book-btn">Book Consultation</a>
+                <a href="https://wa.me/9113602399" class="book-btn">Book Consultation</a>
             </div>
         </div>
     </body>
@@ -351,7 +351,7 @@ app.get('/electro', (req, res) => {
 
             <div class="tech-box" style="background: #eff6ff; border-color: #bfdbfe;">
                 <h3>Why it works</h3>
-                <p>By mimicking the body's natural electrical impulses, electrotherapy can "reset" the nervous system, lower the sensitivity of pain receptors, and stimulate the release of <strong>endorphins</strong>your body's natural painkillers.</p>
+                <p>By mimicking the body's natural electrical impulses, electrotherapy can "reset" the nervous system, lower the sensitivity of pain receptors, and stimulate the release of <strong>endorphins</strong>—your body's natural painkillers.</p>
             </div>
 
             <a href="/" class="home-btn">Back to Home Page</a>
@@ -447,7 +447,7 @@ app.get('/stroke-rehab', (req, res) => {
     <body>
         <div class="info-card">
             <h1>Stroke Rehabilitation</h1>
-            <p>Stroke rehabilitation is a comprehensive program designed to help survivors relearn skills that were lost when part of the brain was damaged. Our focus is on <strong>Neuroplasticity</strong>the brain's ability to rewire itself through repetitive, purposeful movement.</p>
+            <p>Stroke rehabilitation is a comprehensive program designed to help survivors relearn skills that were lost when part of the brain was damaged. Our focus is on <strong>Neuroplasticity</strong>—the brain's ability to rewire itself through repetitive, purposeful movement.</p>
 
             
 
@@ -595,7 +595,7 @@ app.get('/gait-training', (req, res) => {
             </ul>
 
             <div class="tip-box">
-                <strong>Why Gait Matters:</strong> An abnormal walking pattern doesn't just make walking difficultit can lead to "compensation injuries" in the opposite hip, lower back, or knees. Proper training fixes the root cause before other problems start.
+                <strong>Why Gait Matters:</strong> An abnormal walking pattern doesn't just make walking difficult—it can lead to "compensation injuries" in the opposite hip, lower back, or knees. Proper training fixes the root cause before other problems start.
             </div>
 
             <a href="/" class="home-btn">Back to Home Page</a>
@@ -1760,6 +1760,5 @@ app.listen(PORT, () => {
     console.log(`Server running at http://localhost:${PORT}`);
 
 });
-
 
  
