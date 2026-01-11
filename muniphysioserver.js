@@ -1147,25 +1147,54 @@ function renderHTML(doctor, feedbacks, stats) {
 
             }
 
-            .main-title { 
+            /* Update the main-title to allow wrapping and better scaling */
+.main-title { 
+    margin: 0; 
+    font-size: 3.5rem; 
+    line-height: 1.2; /* Added to prevent clipping when text wraps */
+    font-weight: 700; 
+    background: linear-gradient(to right, #fff, #cbd5e1);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    text-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    word-wrap: break-word; /* Ensures long words don't break layout */
+    max-width: 100%;
+}
 
-                margin: 0; 
+/* Updated Responsive Section */
+@media (max-width: 900px) { 
+    .container { 
+        grid-template-columns: 1fr; 
+        padding: 0 15px; /* Reduced padding for more space */
+    } 
 
-                font-size: 3.5rem; 
+    .header-section { 
+        padding: 50px 15px; /* Adjust padding */
+        border-radius: 0 0 30px 30px;
+    }
 
-                font-weight: 700; 
+    .main-title { 
+        /* Use clamp so it shrinks on very small phones but stays readable */
+        font-size: clamp(1.8rem, 8vw, 2.5rem); 
+        padding: 0 10px;
+        line-height: 1.1;
+    }
 
-                background: linear-gradient(to right, #fff, #cbd5e1);
+    .sub-title {
+        font-size: 1rem;
+        padding: 0 20px;
+    }
 
-                -webkit-background-clip: text;
+    .profile-img { 
+        width: 140px; 
+        height: 140px; 
+        transform: translateY(-40px); /* Slightly less pull-up on mobile */
+    }
 
-                -webkit-text-fill-color: transparent;
+    .profile-card { position: static; }
 
-                text-shadow: 0 4px 12px rgba(0,0,0,0.3);
-
-            }
-
-            .sub-title { color: #e2e8f0; font-size: 1.25rem; margin-top: 15px; font-weight: 300; }
+    .main-content { margin-top: 20px; }
+}
 
             /* LAYOUT */
 
@@ -1762,3 +1791,4 @@ app.listen(PORT, () => {
 });
 
  
+
