@@ -1109,7 +1109,7 @@ function renderHTML(doctor, feedbacks, stats) {
         background-size: cover;
         background-position: center;
         text-align: center; 
-        padding: 60px 20px 100px 20px; /* Increased bottom padding for profile image room */
+        padding: 200px 30px 150px 30px; /* Increased bottom padding for profile image room */
         color: var(--white);
         border-radius: 0 0 40px 40px;
         position: relative;
@@ -1498,6 +1498,7 @@ app.listen(PORT, () => {
 });
 
  
+
 
 
 
