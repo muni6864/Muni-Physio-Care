@@ -1124,7 +1124,7 @@ function renderHTML(doctor, feedbacks, stats) {
     .main-title { 
         margin: 0 auto; 
         font-size: clamp(1.5rem, 7vw, 3.5rem); /* Auto-scales based on screen width */
-        font-weight: 700; 
+        font-weight: 500; 
         line-height: 1.2;
         width: 100%;
         max-width: 90vw; 
@@ -1226,7 +1226,7 @@ function renderHTML(doctor, feedbacks, stats) {
         }
 
         .main-title { 
-            font-size: 1.8rem !important;
+            font-size: 1.2rem !important;
             letter-spacing: -0.5px;
         }
 
@@ -1524,6 +1524,7 @@ app.listen(PORT, () => {
 });
 
  
+
 
 
 
