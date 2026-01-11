@@ -1217,7 +1217,7 @@ function renderHTML(doctor, feedbacks, stats) {
     }
 
     .header-section {
-        padding: 40px 10px 80px 10px; /* Gives more room for the overlap */
+        padding: 200px 10px 200px 10px; /* Gives more room for the overlap */
     }
 
     .profile-card {
@@ -1828,6 +1828,7 @@ app.listen(PORT, () => {
 });
 
  
+
 
 
 
