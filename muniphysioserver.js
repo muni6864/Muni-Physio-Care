@@ -1218,15 +1218,15 @@ function renderHTML(doctor, feedbacks, stats) {
         .container { 
             grid-template-columns: 1fr; 
             margin-top: -90px; 
-            padding: 0 15px;
+            padding: 100 30px;
         } 
 
         .header-section { 
-            padding: 60px 10px 110px 10px; 
+            padding: 100px 10px 1800px 10px; 
         }
 
         .main-title { 
-            font-size: 0.5rem !important;
+            font-size: 1.8rem !important;
             letter-spacing: -0.5px;
         }
 
@@ -1524,6 +1524,7 @@ app.listen(PORT, () => {
 });
 
  
+
 
 
 
