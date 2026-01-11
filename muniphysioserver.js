@@ -1147,53 +1147,63 @@ function renderHTML(doctor, feedbacks, stats) {
 
             }
 
-            /* Update the main-title to allow wrapping and better scaling */
+           /* 1. UPDATE THIS SECTION */
+.header-section { 
+    background: linear-gradient(rgba(15, 23, 42, 0.85), rgba(15, 23, 42, 0.9)), url('${headerBgImage}');
+    background-size: cover;
+    background-position: center;
+    text-align: center; 
+    padding: 60px 15px; /* Reduced padding for mobile safety */
+    color: var(--white);
+    border-radius: 0 0 30px 30px;
+    margin-bottom: -40px;
+    position: relative;
+    z-index: 1;
+    overflow: hidden; /* Prevents text from spilling out */
+}
+
+/* 2. UPDATE THIS SECTION - The 'Clamp' ensures it auto-shrinks */
 .main-title { 
-    margin: 0; 
-    font-size: 3.5rem; 
-    line-height: 1.2; /* Added to prevent clipping when text wraps */
+    margin: 0 auto; 
+    font-size: clamp(1.5rem, 7vw, 3.5rem); /* Auto-scales based on screen width */
     font-weight: 700; 
+    line-height: 1.2;
+    width: 100%;
+    max-width: 90vw; /* Keeps text away from screen edges */
     background: linear-gradient(to right, #fff, #cbd5e1);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     text-shadow: 0 4px 12px rgba(0,0,0,0.3);
-    word-wrap: break-word; /* Ensures long words don't break layout */
-    max-width: 100%;
+    word-wrap: break-word;
+    display: block;
 }
 
-/* Updated Responsive Section */
-@media (max-width: 900px) { 
+/* 3. UPDATE YOUR MOBILE MEDIA QUERY AT THE BOTTOM */
+@media (max-width: 600px) { 
     .container { 
         grid-template-columns: 1fr; 
-        padding: 0 15px; /* Reduced padding for more space */
+        padding: 0 10px; 
     } 
 
-    .header-section { 
-        padding: 50px 15px; /* Adjust padding */
-        border-radius: 0 0 30px 30px;
-    }
-
     .main-title { 
-        /* Use clamp so it shrinks on very small phones but stays readable */
-        font-size: clamp(1.8rem, 8vw, 2.5rem); 
-        padding: 0 10px;
-        line-height: 1.1;
+        font-size: 1.8rem !important; /* Forces a safe size for small screens */
+        letter-spacing: -0.5px;
     }
 
-    .sub-title {
-        font-size: 1rem;
-        padding: 0 20px;
+    .header-section {
+        padding: 40px 10px 80px 10px; /* Gives more room for the overlap */
     }
 
-    .profile-img { 
-        width: 140px; 
-        height: 140px; 
-        transform: translateY(-40px); /* Slightly less pull-up on mobile */
+    .profile-card {
+        margin: 0 10px;
+        width: auto;
     }
 
-    .profile-card { position: static; }
-
-    .main-content { margin-top: 20px; }
+    /* Fix for the "half frame" issue - centers the layout */
+    body {
+        overflow-x: hidden; 
+        width: 100%;
+    }
 }
 
             /* LAYOUT */
@@ -1791,4 +1801,5 @@ app.listen(PORT, () => {
 });
 
  
+
 
