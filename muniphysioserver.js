@@ -1226,7 +1226,7 @@ function renderHTML(doctor, feedbacks, stats) {
         }
 
         .main-title { 
-            font-size: 1.2rem !important;
+            font-size: 0.5rem !important;
             letter-spacing: -0.5px;
         }
 
@@ -1524,6 +1524,7 @@ app.listen(PORT, () => {
 });
 
  
+
 
 
 
