@@ -1146,6 +1146,33 @@ function renderHTML(doctor, feedbacks, stats) {
 
             }
 
+ /* --- SPECIFIC MOBILE OVERRIDES --- */
+    @media (max-width: 900px) { 
+        .container { 
+            grid-template-columns: 1fr; 
+            margin-top: -90px; 
+            padding: 0 15px;
+        } 
+
+        .header-section { 
+            padding: 50px 10px 110px 10px; 
+        }
+
+        .main-title { 
+            font-size: 1.6rem !important; /* Fixed size for mobile clarity */
+            letter-spacing: -0.5px;
+        }
+
+        .profile-img {
+            width: 130px;
+            height: 130px;
+        }
+    }
+
+
+
+
+
            /* 1. UPDATE THIS SECTION */
 .header-section { 
     background: linear-gradient(rgba(15, 23, 42, 0.85), rgba(15, 23, 42, 0.9)), url('${headerBgImage}');
@@ -1801,6 +1828,7 @@ app.listen(PORT, () => {
 });
 
  
+
 
 
 
